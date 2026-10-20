@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>La Liga del Vino</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header id="hdr" hidden>
+  <h1 id="marca">La Liga del Vino<small id="rolTxt"></small></h1>
+  <nav id="tabs"></nav>
+  <div class="status" id="status"></div>
+</header>
+<main id="app"><div class="empty">Cargando…</div></main>
+<dialog id="dlg"><div class="dlg" id="dlgBody"></div></dialog>
+<div id="print"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
