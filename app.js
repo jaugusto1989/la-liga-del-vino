@@ -83,8 +83,9 @@ async function cargar() {
       q(sb.from('perfiles_ganancia').select('*').order('porcentaje')),
       q(sb.from('rubros').select('*').order('nombre')),
       q(sb.from('cajas').select('*').eq('estado', 'cerrada').order('cierre', { ascending: false }).limit(30)),
-      q(sb.from('usuarios').select('*').order('creado'))
-    ]);
+      q(sb.from('usuarios').select('*').order('creado')),
+      q(sb.from('proveedores').select('*').eq('activo', true).order('nombre'))
+    ]).then(r => (D.proveedores = r.pop(), r));
   }
   await cargarCaja();
 }
@@ -99,7 +100,7 @@ async function cargarCaja() {
 
 /* ---------------- RENDER ---------------- */
 const TABS = [['vender', 'Vender'], ['tickets', 'Tickets del día'], ['caja', 'Caja del día'], ['productos', 'Productos'],
-  ['promos', 'Promociones', 1], ['clientes', 'Cuentas corrientes'], ['perfiles', 'Perfiles de ganancia', 1], ['ajustes', 'Ajustes', 1]];
+  ['promos', 'Promociones', 1], ['ingreso', 'Ingreso de mercadería', 1], ['proveedores', 'Proveedores', 1], ['clientes', 'Cuentas corrientes'], ['perfiles', 'Perfiles de ganancia', 1], ['ajustes', 'Ajustes', 1]];
 function render() {
   if (!U) return;
   $('#hdr').hidden = false;
@@ -111,7 +112,7 @@ function render() {
   const bajos = D.catalogo.filter(p => p.stock_bajo);
   const banner = bajos.length ? `<div class="banner"><b>Stock bajo:</b> ${bajos.map(p => `${esc(p.nombre)} (${p.stock})`).join(' · ')}</div>` : '';
   const top = msg ? `<div class="msg ${msg[0]} topmsg">${esc(msg[1])}</div>` : '';
-  $('#app').innerHTML = banner + top + ({ vender, tickets, caja, productos, promos, clientes, perfiles, ajustes })[tab]();
+  $('#app').innerHTML = banner + top + ({ vender, tickets, caja, productos, promos, clientes, perfiles, ajustes, ingreso, proveedores })[tab]();
   if (tab === 'vender' && !$('#dlg').open) { const i = $('#scan'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 }
 function dlg(html) { $('#dlgBody').oninput = null; $('#dlgBody').innerHTML = html; if (!$('#dlg').open) $('#dlg').showModal(); }
@@ -409,7 +410,8 @@ function perfiles() {
   <td><input class="num" data-perf="porcentaje" data-id="${f.id}" value="${+f.porcentaje}" inputmode="decimal" aria-label="Porcentaje"></td>
   <td><select data-perf="redondeo" data-id="${f.id}" aria-label="Redondeo">${[1, 10, 50, 100, 500].map(r => `<option value="${r}" ${r === f.redondeo ? 'selected' : ''}>$${r}</option>`).join('')}</select></td>
   <td class="r num">${n}</td><td class="r">${n ? '' : `<button class="link" data-act="delperf" data-id="${f.id}">Borrar</button>`}</td></tr>`; }).join('')}
-  </tbody></table></div><button class="btn" style="align-self:start" data-act="addperf">+ Nuevo perfil</button></section>`;
+  </tbody></table></div><button class="btn" style="align-self:start" data-act="addperf">+ Nuevo perfil</button></section>
+  ${perfilesPorCategoria()}`;
 }
 
 /* ---------------- AJUSTES ---------------- */

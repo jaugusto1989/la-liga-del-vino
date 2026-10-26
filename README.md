@@ -6,6 +6,8 @@ Sistema de mostrador, stock y caja diaria. Etapa 1: ventas con lector de código
 - `index.html`, `styles.css`, `app.js`: el sistema (sitio estático, sin compilación).
 - `config.js`: URL y clave pública de Supabase.
 - `supabase/00-esquema.sql`: base de datos completa (ya cargada).
+- `listas.js`, `compras.js`: lector de listas (PDF/Excel), proveedores e ingreso de mercadería.
+- `supabase/02-proveedores-y-compras.sql`: catálogo por proveedor e ingreso de mercadería.
 - `supabase/01-aprobar-usuarios.sql`: ajuste de seguridad para que los usuarios nuevos necesiten aprobación del dueño. **Correrlo una vez en el SQL Editor.**
 
 ## Puesta en marcha
@@ -16,7 +18,6 @@ Sistema de mostrador, stock y caja diaria. Etapa 1: ventas con lector de código
 5. Los vendedores se crean su cuenta desde la pantalla de inicio y el dueño los habilita en Ajustes > Usuarios.
 
 ## Pendiente (próximas etapas)
-- Importador de listas de precios (PDF y Excel).
 - Contabilidad: gastos, compras y balance mensual.
 - Modo sin conexión para el mostrador.
 - Facturación electrónica ARCA.
