@@ -45,7 +45,7 @@
         let rubro = ''; const out = [];
         for (const ln of lines) {
           if (!ln.trim() || HDR.test(ln.trim())) continue;
-          const m = /^\s*(\d+)\s+(?:(\S+) - )?(.+?)\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})\s+(\d{2}\/\d{2}\/\d{4})/.exec(ln);
+          const m = /^\s*(\d+)\s+(?:(\d+)\s*-\s*)?(.+?)\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})\s+(\d{2}\/\d{2}\/\d{4})/.exec(ln);
           if (m) { const u = /x\s*(\d+)\s*u\b/i.exec(m[3]); out.push({ codigo: m[1], descripcion: limpia(m[3]), rubro, costo: ar(m[5]), costo_bulto: ar(m[4]), unidades_bulto: u ? +u[1] : null, fecha_precio: fecha(m[6]) }); continue; }
           if (/^\s*\d/.test(ln)) continue;
           rubro = ln.trim();

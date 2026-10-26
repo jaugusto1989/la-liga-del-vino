@@ -70,7 +70,7 @@ const RUBRO_REGLAS = [['Fernet', /FERNET/], ['Espumantes', /ESPUM|CHAMP|BRUT|SID
   ['Vinos', /VINO|MALBEC|CABERNET|MERLOT|SYRAH|CHARDONNAY|SAUV|TORRONT|BONARDA|PINOT|BLEND|ROSADO|TINTO|BLANCO|TARDIO|ESTUCHE|RESERVA/]];
 function adivinarRubro(desc) { const d = desc.toUpperCase(); const n = (RUBRO_REGLAS.find(([, re]) => re.test(d)) || ['Almacén'])[0]; return (D.rubros.find(r => r.nombre === n) || D.rubros.find(r => r.nombre === 'Otros') || {}).id || ''; }
 function nombreLimpio(desc) {
-  let t = ' ' + desc.replace(/\bx\s*\d+\s*u\b/ig, ' ').replace(/\b\d+\s*X\s*(?=\d)/ig, ' ') + ' ';
+  let t = ' ' + desc.replace(/^\s*\d{3,}\s*-\s*/, '').replace(/\bx\s*\d+\s*u\b/ig, ' ').replace(/\b\d+\s*X\s*(?=\d)/ig, ' ') + ' ';
   let vol = '';
   const m = /(?:\bX\s*)?(\d+(?:[.,]\d+)?)\s*(CC|ML|LTS?|LTRO?S?|L|CL)?\b(?!.*\d)/i.exec(t);
   if (m) {
@@ -82,6 +82,12 @@ function nombreLimpio(desc) {
   t = t.replace(/\bX\s*$/i, ' ').replace(/\s+[.,-]+(?=\s|$)/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(Ap|Ener|Beb|Gas)\.\s*/i, '').replace(/^Cerv\./i, 'Cerveza');
   t = t.toLowerCase().replace(/(^|[\s(/-])(\S)/g, (a, b, c) => b + c.toUpperCase());
   return (t + (vol ? ' ' + vol : '')).trim();
+}
+function parecido(nom) {
+  const tk = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 1);
+  const a = tk(nom); let best = null, bs = 0;
+  for (const p of D.productos) { const b = tk(p.nombre); const hit = a.filter(w => b.includes(w)).length; const sc = 2 * hit / (a.length + b.length); if (sc > bs) { bs = sc; best = p; } }
+  return bs >= 0.6 ? best : null;
 }
 function nuevoIngreso(provId) { const p = prov(provId); ing = { prov: provId || '', envio: p ? +p.envio_pct : 0, iva: p ? !p.lista_incluye_iva : false, comp: '', items: [], q: '', sug: [] }; }
 const costoFinalIng = c => (+c || 0) * (ing.iva ? 1 + D.config.iva_pct / 100 : 1) * (1 + (dec(ing.envio) || 0) / 100);
@@ -110,7 +116,8 @@ function ingreso() {
       ${nuevo ? `<div class="row" style="margin-top:6px"><span class="pill warn" style="flex:0;align-self:center">Nuevo</span>
         <input class="num" data-il="cb" data-k="${k}" value="${esc(l.nuevo.codigo_barras)}" placeholder="Código de barras" aria-label="Código de barras">
         <select data-il="rubro" data-k="${k}" aria-label="Categoría">${D.rubros.map(r => `<option value="${r.id}" ${r.id === l.nuevo.rubro_id ? 'selected' : ''}>${esc(r.nombre)}</option>`).join('')}</select>
-        <select data-il="perfil" data-k="${k}" aria-label="Perfil">${D.perfiles.map(f => `<option value="${f.id}" ${f.id === l.nuevo.perfil_id ? 'selected' : ''}>${esc(f.nombre)} +${+f.porcentaje}%</option>`).join('')}</select></div>`
+        <select data-il="perfil" data-k="${k}" aria-label="Perfil">${D.perfiles.map(f => `<option value="${f.id}" ${f.id === l.nuevo.perfil_id ? 'selected' : ''}>${esc(f.nombre)} +${+f.porcentaje}%</option>`).join('')}</select></div>
+        ${l.sugerido && D.productos.find(p => p.id === l.sugerido) ? `<div class="msg ok" style="margin-top:6px">¿Es <b>${esc(D.productos.find(p => p.id === l.sugerido).nombre)}</b>, que ya tenés? <button class="link" data-act="i_usar" data-k="${k}">Sí, es ese</button></div>` : ''}`
         : `<span class="pill ok">Ya lo tenés · stock ${D.productos.find(p => p.id === l.producto_id)?.stock ?? 0}</span>`}</td>
       <td><input class="num" style="width:64px" data-il="cantidad" data-k="${k}" value="${esc(l.cantidad)}" inputmode="numeric" aria-label="Cantidad"></td>
       <td class="r"><input class="num" style="width:100px;text-align:right" data-il="costo" data-k="${k}" value="${esc(l.costo)}" inputmode="decimal" aria-label="Costo"></td>
@@ -133,7 +140,8 @@ function lineaDesdeArticulo(a) {
   const nom = prod ? prod.nombre : nombreLimpio(a.descripcion);
   const ex = !prod && D.productos.find(p => p.nombre.toLowerCase() === nom.toLowerCase());
   const p2 = prod || ex;
-  return { articulo_id: a.id, desc: `${a.codigo} · ${a.descripcion}`, nombre: p2 ? p2.nombre : nom, producto_id: p2 ? p2.id : null, cantidad: a.unidades_bulto || 1, costo: a.costo ?? '',
+  const sim = !p2 ? parecido(nom) : null;
+  return { sugerido: sim ? sim.id : null, articulo_id: a.id, desc: `${a.codigo} · ${a.descripcion}`, nombre: p2 ? p2.nombre : nom, producto_id: p2 ? p2.id : null, cantidad: a.unidades_bulto || 1, costo: a.costo ?? '',
     nuevo: { nombre: nom, codigo_barras: '', rubro_id: adivinarRubro(a.descripcion), perfil_id: D.perfiles[0]?.id, stock_minimo: 0 } };
 }
 let iTimer = null;
@@ -188,6 +196,7 @@ document.addEventListener('click', e => {
         const p = await q(sb.from('proveedores').insert({ nombre: n }).select().single()); D.proveedores = await q(sb.from('proveedores').select('*').eq('activo', true).order('nombre')); nuevoIngreso(p.id); break; }
       case 'i_add': { const art = ing.sug[k]; ing.items.push(lineaDesdeArticulo(art)); ing.q = ''; ing.sug = []; break; }
       case 'i_manual': ing.items.push({ articulo_id: null, desc: '', nombre: '', producto_id: null, cantidad: 1, costo: '', nuevo: { nombre: '', codigo_barras: '', rubro_id: D.rubros[0]?.id, perfil_id: D.perfiles[0]?.id, stock_minimo: 0 } }); break;
+      case 'i_usar': { const l = ing.items[k], p = D.productos.find(p => p.id === l.sugerido); l.producto_id = p.id; l.nombre = p.nombre; l.sugerido = null; break; }
       case 'i_del': ing.items.splice(k, 1); break;
       case 'i_reset': nuevoIngreso(ing.prov); break;
       case 'i_ok': return confirmarIngreso();
@@ -203,7 +212,9 @@ document.addEventListener('input', e => {
   if (t.id === 'i_q') { ing.q = t.value; clearTimeout(iTimer); iTimer = setTimeout(() => run(buscarArticulos), 250); return; }
   if (t.id === 'i_comp') { ing.comp = t.value; return; }
   if (t.dataset.il) { const l = ing.items[+t.dataset.k], f = t.dataset.il;
-    if (f === 'cantidad' || f === 'costo') l[f] = t.value; else if (f === 'cb') l.nuevo.codigo_barras = t.value; }
+    if (f === 'cantidad' || f === 'costo') l[f] = t.value; else if (f === 'cb') { l.nuevo.codigo_barras = t.value;
+      const p = t.value.trim() && D.productos.find(p => p.codigo_barras === t.value.trim());
+      if (p) { l.producto_id = p.id; l.nombre = p.nombre; l.sugerido = null; msg = ['ok', `Ese código es de ${p.nombre}: se va a sumar a ese producto.`]; render(); } } }
 });
 document.addEventListener('change', e => {
   const t = e.target;
