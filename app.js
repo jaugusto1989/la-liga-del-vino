@@ -342,8 +342,15 @@ async function guardarProducto(id) {
     await q(sb.from('productos').update({ ...datos, stock }).eq('id', id));
     if (stock !== ant) await q(sb.from('stock_movimientos').insert({ producto_id: id, tipo: 'ajuste', cantidad: stock - ant, usuario_id: U.id, nota: 'Ajuste manual' }));
   } else {
-    const n = await q(sb.from('productos').insert({ ...datos, stock }).select().single());
-    if (stock) await q(sb.from('stock_movimientos').insert({ producto_id: n.id, tipo: 'inicial', cantidad: stock, usuario_id: U.id }));
+    const ex = datos.codigo_barras ? (await q(sb.from('productos').select('id,activo,stock').eq('codigo_barras', datos.codigo_barras)))[0] : null;
+    if (ex && ex.activo) throw new Error('Ya hay un producto con ese código de barras.');
+    if (ex) {   // estaba dado de baja: se reactiva con los datos nuevos
+      await q(sb.from('productos').update({ ...datos, stock: ex.stock + stock, activo: true }).eq('id', ex.id));
+      if (stock) await q(sb.from('stock_movimientos').insert({ producto_id: ex.id, tipo: 'ajuste', cantidad: stock, usuario_id: U.id, nota: 'Reactivado' }));
+    } else {
+      const n = await q(sb.from('productos').insert({ ...datos, stock }).select().single());
+      if (stock) await q(sb.from('stock_movimientos').insert({ producto_id: n.id, tipo: 'inicial', cantidad: stock, usuario_id: U.id }));
+    }
   }
   $('#dlg').close(); await cargar(); toast('Producto guardado.');
 }

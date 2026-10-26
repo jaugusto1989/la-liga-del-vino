@@ -17,7 +17,7 @@ function proveedores() {
     <td><label class="check"><input type="checkbox" data-prov="lista_incluye_iva" data-id="${p.id}" ${p.lista_incluye_iva ? 'checked' : ''}> Incluye</label></td>
     <td><input class="num" style="width:70px" data-prov="envio_pct" data-id="${p.id}" value="${+p.envio_pct}" inputmode="decimal" aria-label="Envío"></td>
     <td class="r num">${provCount[p.id] ?? '…'}</td><td class="muted">${p.lista_actualizada ? fecha(p.lista_actualizada) : 'nunca'}</td>
-    <td class="r" style="white-space:nowrap"><button class="link" data-act="p_imp" data-id="${p.id}">Actualizar lista</button><button class="link" data-act="p_cat" data-id="${p.id}">Ver catálogo</button></td></tr>`).join('')}
+    <td class="r" style="white-space:nowrap"><button class="link" data-act="p_imp" data-id="${p.id}">Actualizar lista</button><button class="link" data-act="p_cat" data-id="${p.id}">Ver catálogo</button><button class="link" data-act="p_del1" data-id="${p.id}">Borrar</button></td></tr>`).join('')}
   </tbody></table></div>
   <div class="row"><div style="flex:3"><label for="np">Nuevo proveedor</label><input id="np" placeholder="Nombre de la distribuidora o del vendedor"></div><button class="btn" style="flex:0" data-act="p_add">Agregar</button></div></section>`;
 }
@@ -89,6 +89,13 @@ function parecido(nom) {
   for (const p of D.productos) { const b = tk(p.nombre); const hit = a.filter(w => b.includes(w)).length; const sc = 2 * hit / (a.length + b.length); if (sc > bs) { bs = sc; best = p; } }
   return bs >= 0.6 ? best : null;
 }
+async function porCodigo(cb) {
+  cb = String(cb || '').trim(); if (!cb) return null;
+  let p = D.productos.find(p => p.codigo_barras === cb); if (p) return p;
+  const r = await q(sb.from('productos_detalle').select('*').eq('codigo_barras', cb).limit(1));
+  if (r[0]) { p = { ...r[0], dadoDeBaja: !r[0].activo }; D.productos.push(p); return p; }
+  return null;
+}
 function nuevoIngreso(provId) { const p = prov(provId); ing = { prov: provId || '', envio: p ? +p.envio_pct : 0, iva: p ? !p.lista_incluye_iva : false, comp: '', items: [], q: '', sug: [] }; }
 const costoFinalIng = c => (+c || 0) * (ing.iva ? 1 + D.config.iva_pct / 100 : 1) * (1 + (dec(ing.envio) || 0) / 100);
 function precioVentaIng(l) {
@@ -118,7 +125,7 @@ function ingreso() {
         <select data-il="rubro" data-k="${k}" aria-label="Categoría">${D.rubros.map(r => `<option value="${r.id}" ${r.id === l.nuevo.rubro_id ? 'selected' : ''}>${esc(r.nombre)}</option>`).join('')}</select>
         <select data-il="perfil" data-k="${k}" aria-label="Perfil">${D.perfiles.map(f => `<option value="${f.id}" ${f.id === l.nuevo.perfil_id ? 'selected' : ''}>${esc(f.nombre)} +${+f.porcentaje}%</option>`).join('')}</select></div>
         ${l.sugerido && D.productos.find(p => p.id === l.sugerido) ? `<div class="msg ok" style="margin-top:6px">¿Es <b>${esc(D.productos.find(p => p.id === l.sugerido).nombre)}</b>, que ya tenés? <button class="link" data-act="i_usar" data-k="${k}">Sí, es ese</button></div>` : ''}`
-        : `<span class="pill ok">Ya lo tenés · stock ${D.productos.find(p => p.id === l.producto_id)?.stock ?? 0}</span>`}</td>
+        : (D.productos.find(p => p.id === l.producto_id)?.dadoDeBaja ? `<span class="pill warn">Estaba dado de baja · se reactiva al cargar</span>` : `<span class="pill ok">Ya lo tenés · stock ${D.productos.find(p => p.id === l.producto_id)?.stock ?? 0}</span>`)}</td>
       <td><input class="num" style="width:64px" data-il="cantidad" data-k="${k}" value="${esc(l.cantidad)}" inputmode="numeric" aria-label="Cantidad"></td>
       <td class="r"><input class="num" style="width:100px;text-align:right" data-il="costo" data-k="${k}" value="${esc(l.costo)}" inputmode="decimal" aria-label="Costo"></td>
       <td class="r num">${fmt(costoFinalIng(l.costo))}</td><td class="r num"><b>${fmt(precioVentaIng(l))}</b></td>
@@ -152,6 +159,7 @@ async function buscarArticulos() {
   render(); const i = $('#i_q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 }
 async function confirmarIngreso() {
+  for (const l of ing.items) if (!l.producto_id && l.nuevo.codigo_barras) { const p = await porCodigo(l.nuevo.codigo_barras); if (p) { l.producto_id = p.id; l.nombre = p.nombre; } }
   for (const l of ing.items) {
     if (!(+l.cantidad > 0)) throw new Error('Revisá las cantidades.');
     if (l.costo === '' || isNaN(dec(l.costo))) throw new Error(`Falta el costo de ${l.nombre}.`);
@@ -192,6 +200,17 @@ document.addEventListener('click', e => {
         msg = ['ok', `Lista cargada: ${r.total} artículos (${r.nuevos} nuevos, ${r.precios_cambiados} con precio nuevo).`]; break; }
       case 'p_add': { const n = $('#np').value.trim(); if (!n) return $('#np').focus();
         await q(sb.from('proveedores').insert({ nombre: n })); D.proveedores = await q(sb.from('proveedores').select('*').eq('activo', true).order('nombre')); provCount = {}; msg = ['ok', 'Proveedor agregado.']; break; }
+      case 'p_del1': { const p = prov(id), n = provCount[p.id] ?? 0;
+        return dlg(`<h2>¿Borrar ${esc(p.nombre)}?</h2><p style="margin:0">Se borra el proveedor y los <b>${n}</b> artículos de su catálogo. Las compras que ya registraste y tus productos no se tocan.</p><div class="row"><button class="btn" data-act="cerrardlg">Cancelar</button><button class="btn primary" data-act="p_del2" data-id="${p.id}">Sí, continuar</button></div>`); }
+      case 'p_del2': { const p = prov(id);
+        return dlg(`<h2>Confirmá el borrado</h2><p style="margin:0">Esto no se puede deshacer. Escribí <b>${esc(p.nombre)}</b> para confirmar.</p><input id="p_conf" autocomplete="off"><div class="row"><button class="btn" data-act="cerrardlg">Cancelar</button><button class="btn primary" data-act="p_del3" data-id="${p.id}">Borrar definitivamente</button></div>`); }
+      case 'p_del3': { const p = prov(id);
+        if ($('#p_conf').value.trim().toLowerCase() !== p.nombre.toLowerCase()) throw new Error('El nombre no coincide. No se borró nada.');
+        await q(sb.from('articulos_proveedor').delete().eq('proveedor_id', id));
+        const { error } = await sb.from('proveedores').delete().eq('id', id);
+        if (error) await q(sb.from('proveedores').update({ activo: false, nombre: `${p.nombre} (borrado ${fecha(new Date())} ${hora(new Date())})` }).eq('id', id));
+        $('#dlg').close(); D.proveedores = await q(sb.from('proveedores').select('*').eq('activo', true).order('nombre')); provCount = {};
+        if (ing && ing.prov === id) nuevoIngreso(''); msg = ['ok', `Proveedor ${p.nombre} borrado.`]; break; }
       case 'i_np': { const n = $('#i_np').value.trim(); if (!n) return $('#i_np').focus();
         const p = await q(sb.from('proveedores').insert({ nombre: n }).select().single()); D.proveedores = await q(sb.from('proveedores').select('*').eq('activo', true).order('nombre')); nuevoIngreso(p.id); break; }
       case 'i_add': { const art = ing.sug[k]; ing.items.push(lineaDesdeArticulo(art)); ing.q = ''; ing.sug = []; break; }
@@ -213,8 +232,9 @@ document.addEventListener('input', e => {
   if (t.id === 'i_comp') { ing.comp = t.value; return; }
   if (t.dataset.il) { const l = ing.items[+t.dataset.k], f = t.dataset.il;
     if (f === 'cantidad' || f === 'costo') l[f] = t.value; else if (f === 'cb') { l.nuevo.codigo_barras = t.value;
-      const p = t.value.trim() && D.productos.find(p => p.codigo_barras === t.value.trim());
-      if (p) { l.producto_id = p.id; l.nombre = p.nombre; l.sugerido = null; msg = ['ok', `Ese código es de ${p.nombre}: se va a sumar a ese producto.`]; render(); } } }
+      clearTimeout(iTimer); const v = t.value;
+      iTimer = setTimeout(() => run(async () => { const p = await porCodigo(v);
+        if (p) { l.producto_id = p.id; l.nombre = p.nombre; l.sugerido = null; msg = ['ok', p.dadoDeBaja ? `Ese código es de ${p.nombre}, que estaba dado de baja: se reactiva y se le suma el stock.` : `Ese código es de ${p.nombre}: se va a sumar a ese producto.`]; render(); } }), 400); } }
 });
 document.addEventListener('change', e => {
   const t = e.target;
@@ -232,10 +252,10 @@ document.addEventListener('change', e => {
 document.addEventListener('keydown', e => {
   if (e.target.id !== 'i_q' || e.key !== 'Enter') return;
   e.preventDefault(); const v = ing.q.trim(); if (!v) return;
-  const p = D.productos.find(p => p.codigo_barras === v);
-  if (p) return run(async () => {
+  return run(async () => {
+    const p = await porCodigo(v);
+    if (!p) { if (ing.sug.length === 1) { ing.items.push(lineaDesdeArticulo(ing.sug[0])); ing.q = ''; ing.sug = []; render(); } return; }
     const art = await q(sb.from('articulos_proveedor').select('id,costo,codigo,descripcion').eq('proveedor_id', ing.prov).eq('producto_id', p.id).limit(1));
     ing.items.push({ articulo_id: art[0]?.id || null, desc: art[0] ? `${art[0].codigo} · ${art[0].descripcion}` : '', nombre: p.nombre, producto_id: p.id, cantidad: 1, costo: art[0]?.costo ?? '', nuevo: {} });
     ing.q = ''; ing.sug = []; render(); });
-  if (ing.sug.length === 1) { ing.items.push(lineaDesdeArticulo(ing.sug[0])); ing.q = ''; ing.sug = []; render(); }
 });
