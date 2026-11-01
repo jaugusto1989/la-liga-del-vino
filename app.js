@@ -1,4 +1,5 @@
 /* La Liga del Vino · mostrador, stock y caja (etapa 1) */
+new Image().src = 'logo.png';   // precarga para que salga en la impresión directa
 const sb = supabase.createClient(APP_CONFIG.SUPABASE_URL, APP_CONFIG.SUPABASE_KEY);
 const $ = s => document.querySelector(s);
 const fmt = n => '$' + Math.round(+n || 0).toLocaleString('es-AR');
@@ -214,7 +215,7 @@ async function cobrar() {
   } catch (e) { busy = false; await cargar().catch(() => {}); toast(e.message, 'bad'); }
 }
 function ticketHTML(v) {
-  return `<div class="c"><b>${esc(D.config.nombre_local.toUpperCase())}</b><br>${fecha(v.fecha)} ${hora(v.fecha)} · #${v.numero}</div><hr>
+  return `<div class="c"><img src="logo.png" alt="${esc(D.config.nombre_local)}" class="tlogo">${fecha(v.fecha)} ${hora(v.fecha)} · #${v.numero}</div><hr>
   ${v.items.map(i => `<div>${esc(i.n)}</div><div class="l"><span>${i.q} x ${fmt(i.pu)}</span><span>${fmt(i.q * i.pu)}</span></div>`).join('')}<hr>
   ${+v.descuento ? `<div class="l"><span>Subtotal</span><span>${fmt(v.subtotal)}</span></div><div class="l"><span>Descuento</span><span>-${fmt(v.descuento)}</span></div>` : ''}
   <div class="l"><b>TOTAL</b><b>${fmt(v.total)}</b></div>
