@@ -75,7 +75,7 @@ tr.anul td{color:var(--muted)}
 dialog{border:0;border-radius:14px;padding:0;background:var(--surface);color:var(--ink);max-width:min(560px,calc(100% - 32px));width:100%}
 dialog::backdrop{background:rgb(0 0 0 / .45)}
 .dlg{padding:20px;display:flex;flex-direction:column;gap:12px}
-.ticket{font:13px/1.5 var(--f-mono);background:#fff;color:#111;width:280px;max-width:100%;margin:0 auto;padding:16px;border:1px dashed #999}
+.ticket{font:13px/1.5 "Roboto Mono",monospace;background:#fff;color:#111;width:280px;max-width:100%;margin:0 auto;padding:16px;border:1px dashed #999}
 .tlogo{width:70%;max-width:220px;height:auto;display:block;margin:0 auto 10px}
 .ticket .c{text-align:center}.ticket hr{border:0;border-top:1px dashed #999}
 .ticket .l{display:flex;justify-content:space-between;gap:8px}
@@ -96,7 +96,7 @@ footer{color:var(--muted);font-size:12px;padding-block:0 30px;text-align:center}
   html,body{height:auto!important;min-height:0!important;overflow:visible!important;width:auto!important}
   body{background:#fff!important;padding:0!important;margin:0!important}
   body>*:not(#print){display:none!important}
-  #print{display:block;width:100%;box-sizing:border-box;padding:2mm 3mm;font:11px/1.35 "IBM Plex Mono",monospace;color:#000}
+  #print{display:block;width:100%;box-sizing:border-box;padding:2mm 3mm;font:11px/1.35 "Roboto Mono",monospace;color:#000}
   #print *{break-inside:avoid}
   #print .tlogo{width:70%;max-width:none;margin:0 auto 4mm}
   #print .c{text-align:center}#print hr{border:0;border-top:1px dashed #000;margin:2mm 0}

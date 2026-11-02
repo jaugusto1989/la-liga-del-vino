@@ -1,5 +1,5 @@
 /* La Liga del Vino · mostrador, stock y caja (etapa 1) */
-new Image().src = 'logo.png';   // precarga para que salga en la impresión directa
+new Image().src = 'logo.png'; document.fonts && document.fonts.load('400 12px "Roboto Mono"') && document.fonts.load('700 12px "Roboto Mono"');   // precarga para que salga en la impresión directa
 const sb = supabase.createClient(APP_CONFIG.SUPABASE_URL, APP_CONFIG.SUPABASE_KEY);
 const $ = s => document.querySelector(s);
 const fmt = n => '$' + Math.round(+n || 0).toLocaleString('es-AR');
