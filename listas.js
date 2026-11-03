@@ -72,14 +72,18 @@
     const ic = find([/^c[oó]d/, /^c[oó]digo/, /^art.*n[ºo°]/]);
     const id = find([/^art[ií]culo$/, /descripci/, /detalle/, /producto/, /nombre/, /art[ií]culo/]);
     const ip = find([/precio final/, /^precio$/, /costo/, /unitario/, /precio/]);
+    const ib = find([/unid.*bulto/, /x bulto/, /^bulto$/]);
     if (id < 0 || ip < 0) return [];
     const rubro = String(archivo || '').replace(/\.[^.]+$/, '').replace(/\s+\d{1,2}-\d{1,2}.*$/, '');
     const out = [];
     for (const r of rows.slice(hi + 1)) {
       const d = limpia(r[id]); const p = typeof r[ip] === 'number' ? r[ip] : ar(r[ip]);
-      if (!d || !p || isNaN(p)) continue;
-      const cod = ic >= 0 && ic !== id && r[ic] !== null && r[ic] !== undefined && String(r[ic]).trim() ? String(r[ic]).trim() : d.toUpperCase();
-      out.push({ codigo: cod, descripcion: d, rubro, costo: Math.round(p / divisor * 100) / 100 });
+      const tieneCod = ic >= 0 && ic !== id && r[ic] !== null && r[ic] !== undefined && String(r[ic]).trim() !== '';
+      const sinPrecio = !p || isNaN(p);
+      if (!d || (sinPrecio && !tieneCod)) continue;      // sin precio solo si tiene código (queda como «sin precio»)
+      const cod = tieneCod ? String(r[ic]).trim() : d.toUpperCase();
+      const c = sinPrecio ? null : Math.round(p / divisor * 100) / 100, ub = ib >= 0 ? parseInt(r[ib]) || null : null;
+      out.push({ codigo: cod, descripcion: d, rubro, costo: c, unidades_bulto: ub, costo_bulto: ub && c ? Math.round(c * ub * 100) / 100 : null });
     }
     return out;
   }

@@ -334,7 +334,7 @@ async function buscarCmp() {
   cmp.buscando = true;
   const r = await q(sb.rpc('buscar_articulos', { p_patrones: pats, p_limite: 150 }));
   r.forEach(a => a.p = precioArt(a));
-  r.sort((x, y) => (y.vigente - x.vigente) || (x.p.final - y.p.final));
+  r.sort((x, y) => (y.vigente - x.vigente) || ((x.costo == null) - (y.costo == null)) || (x.p.final - y.p.final));
   cmp.res = r; cmp.buscando = false; render();
   const i = $('#c_q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 }
@@ -345,8 +345,8 @@ function comparar() {
     return `<tr${cmp.sel.has(a.id) ? ' class="selrow"' : ''}><td><input type="checkbox" data-csel="${a.id}" ${cmp.sel.has(a.id) ? 'checked' : ''} aria-label="Comparar"></td>
     <td style="min-width:220px"><b>${esc(a.descripcion)}</b><div class="muted">${esc(a.codigo)} · ${esc(a.catalogo || 'sin catálogo')} · ${fechaCorta(fl(a))} ${viejo(fl(a)) ? '<span class="pill warn">precio viejo</span>' : ''}</div></td>
     <td>${esc(a.proveedor)}</td>
-    <td class="r num desg">${fmt(p.lista)}${p.iva ? `<div>+ IVA ${fmt(p.iva)}</div>` : ''}${p.env ? `<div>+ envío ${+a.envio_pct}% ${fmt(p.env)}</div>` : ''}</td>
-    <td class="r num"><b>${fmt(p.final)}</b>${ub > 1 ? `<div class="muted">bulto x${ub}: ${fmt(p.final * ub)}</div>` : ''}</td>
+    ${a.costo == null ? '<td class="r"><span class="pill warn">sin precio</span></td><td class="r muted">a confirmar</td>' : `<td class="r num desg">${fmt(p.lista)}${p.iva ? `<div>+ IVA ${fmt(p.iva)}</div>` : ''}${p.env ? `<div>+ envío ${+a.envio_pct}% ${fmt(p.env)}</div>` : ''}</td>
+    <td class="r num"><b>${fmt(p.final)}</b>${ub > 1 ? `<div class="muted">bulto x${ub}: ${fmt(p.final * ub)}</div>` : ''}</td>`}
     <td><div class="row" style="flex-wrap:nowrap;gap:4px"><input class="num" id="cq_${a.id}" value="1" inputmode="numeric" style="width:52px;min-width:0;flex:none" aria-label="Cantidad">${ub > 1 ? `<select id="cu_${a.id}" style="min-width:0;flex:none;width:auto" aria-label="Unidad"><option value="b">bultos x${ub}</option><option value="u">unid.</option></select>` : '<span class="muted" style="flex:0;align-self:center">unid.</span>'}</div></td>
     <td><button class="btn" data-act="c_add" data-id="${a.id}">Agregar</button></td></tr>`; }).join('');
   return `<section class="panel stack">
@@ -360,15 +360,15 @@ function comparar() {
   </section>`;
 }
 function dlgComparar() {
-  const L = cmp.res.filter(a => cmp.sel.has(a.id)), min = Math.min(...L.map(a => a.p.final));
+  const L = cmp.res.filter(a => cmp.sel.has(a.id)), min = Math.min(...L.filter(a => a.costo != null).map(a => a.p.final));
   const fila = (t, f) => `<tr><th style="text-transform:none;letter-spacing:0">${t}</th>${L.map(a => `<td class="r num">${f(a)}</td>`).join('')}</tr>`;
   dlg(`<h2>Comparación</h2><div class="tablewrap"><table><thead><tr><th></th>${L.map(a => `<th class="r" style="text-transform:none;letter-spacing:0;min-width:150px">${esc(a.proveedor)}<div class="muted" style="font-weight:400">${esc(a.descripcion)}</div></th>`).join('')}</tr></thead><tbody>
   ${fila('Catálogo', a => `${esc(a.catalogo || '—')}<div class="muted">${fechaCorta(a.fecha_lista || a.fecha_precio)}</div>`)}
   ${fila('Precio de lista', a => fmt(a.p.lista))}
   ${fila('IVA', a => a.p.iva ? '+ ' + fmt(a.p.iva) : 'incluido')}
   ${fila('Envío', a => a.p.env ? `+ ${fmt(a.p.env)} (${+a.envio_pct}%)` : '—')}
-  ${fila('<b>Costo final</b>', a => `<b class="${a.p.final === min ? 'best' : ''}">${fmt(a.p.final)}</b>`)}
-  ${fila('Diferencia', a => a.p.final === min ? '<span class="pill ok">el más barato</span>' : '+ ' + fmt(a.p.final - min))}
+  ${fila('<b>Costo final</b>', a => a.costo == null ? 'sin precio' : `<b class="${a.p.final === min ? 'best' : ''}">${fmt(a.p.final)}</b>`)}
+  ${fila('Diferencia', a => a.costo == null ? '—' : a.p.final === min ? '<span class="pill ok">el más barato</span>' : '+ ' + fmt(a.p.final - min))}
   ${fila('Bulto', a => a.unidades_bulto > 1 ? `x${a.unidades_bulto} · ${fmt(a.p.final * a.unidades_bulto)}` : '—')}
   ${fila('', a => `<button class="btn" data-act="c_add" data-id="${a.id}">Agregar al pedido</button>`)}
   </tbody></table></div><button class="btn" data-act="cerrardlg">Cerrar</button>`);
@@ -392,7 +392,7 @@ function pedidos() {
     <div class="tablewrap"><table><thead><tr><th>Código</th><th>Artículo</th><th>Cantidad</th><th class="r">Costo final</th><th></th></tr></thead><tbody>
     ${p.pedido_items.map(i => `<tr><td class="num">${esc(i.codigo || '')}</td><td>${esc(i.descripcion)}</td>
       <td><div class="row" style="flex-wrap:nowrap;gap:6px;align-items:center"><input class="num" style="width:60px;min-width:0;flex:none" data-pi="${i.id}" value="${i.cantidad}" inputmode="numeric" aria-label="Cantidad"><span class="muted" style="flex:none;white-space:nowrap">${i.por_bulto ? `bultos x${i.unidades_bulto}` : 'unid.'}</span></div></td>
-      <td class="r num">${fmt(precioItem(i, pr).final * unidadesItem(i))}</td><td class="r"><button class="link" data-act="pd_del" data-id="${i.id}">Quitar</button></td></tr>`).join('')}
+      <td class="r num">${i.costo == null ? '<span class="pill warn">sin precio</span>' : fmt(precioItem(i, pr).final * unidadesItem(i))}</td><td class="r"><button class="link" data-act="pd_del" data-id="${i.id}">Quitar</button></td></tr>`).join('')}
     </tbody></table></div>
     <div class="row"><button class="btn primary" style="flex:none;white-space:nowrap" data-act="pd_wa" data-id="${p.id}">Texto para WhatsApp</button>
       ${p.estado === 'armado' ? `<button class="btn" style="flex:none;white-space:nowrap" data-act="pd_env" data-id="${p.id}">Marcar como enviado</button>` : ''}
