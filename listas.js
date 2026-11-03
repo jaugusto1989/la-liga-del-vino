@@ -75,7 +75,8 @@
     const ib = find([/unid.*bulto/, /x bulto/, /^bulto$/]);
     const ir = find([/^rubro$/, /^bodega$/, /^marca$/, /^categor/]);
     if (id < 0 || ip < 0) return [];
-    const rubro = String(archivo || '').replace(/\.[^.]+$/, '').replace(/\s+\d{1,2}-\d{1,2}.*$/, '');
+    // el nombre del archivo como rubro solo sirve en Santa Rosa (cepas, fratelli...); en el Excel común queda vacío
+    const rubro = divisor === 1 ? '' : String(archivo || '').replace(/\.[^.]+$/, '').replace(/\s+\d{1,2}-\d{1,2}.*$/, '');
     const out = [];
     for (const r of rows.slice(hi + 1)) {
       const d = limpia(r[id]); const p = typeof r[ip] === 'number' ? r[ip] : ar(r[ip]);
