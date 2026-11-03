@@ -306,7 +306,7 @@ document.addEventListener('keydown', e => {
 });
 
 /* ---------------- ÁREA COMPRAS ---------------- */
-let sub = 'comparar', cmp = { q: '', res: [], sel: new Set(), buscando: false }, peds = null, cTimer = null;
+let sub = 'comparar', cmp = { q: '', res: [], sel: new Map(), buscando: false }, peds = null, cTimer = null;
 const SUBS = [['comparar', 'Comparar precios'], ['pedidos', 'Pedidos'], ['ingreso', 'Ingreso de mercadería'], ['proveedores', 'Proveedores']];
 function compras() {
   if (peds === null) setTimeout(() => run(cargarPedidos));
@@ -352,7 +352,8 @@ function comparar() {
   return `<section class="panel stack">
     <div class="row" style="align-items:end"><div style="flex:4"><label for="c_q">Buscá en todos los catálogos</label><input id="c_q" class="scan" autocomplete="off" value="${esc(cmp.q)}" placeholder="Ej.: lata quilmes, gancia, fernet 750"></div>
     <button class="btn primary" style="flex:none;white-space:nowrap" data-act="c_cmp" ${cmp.sel.size >= 2 ? '' : 'disabled'}>Comparar${cmp.sel.size ? ` (${cmp.sel.size})` : ''}</button></div>
-    <p class="muted" style="margin:0">Ordenado del más barato al más caro según el costo final (con IVA y envío de cada proveedor). Tildá dos o más para compararlos lado a lado.</p>
+    <p class="muted" style="margin:0">Ordenado del más barato al más caro según el costo final (con IVA y envío de cada proveedor). Tildá dos o más para compararlos lado a lado. Podés tildar productos de búsquedas distintas.</p>
+    ${cmp.sel.size ? `<div class="row" style="align-items:center"><div class="muted" style="flex:3">Seleccionados: ${[...cmp.sel.values()].map(a => `<b>${esc(a.proveedor)}</b> ${esc(a.descripcion)}`).join(' · ')}</div><button class="link" style="flex:none" data-act="c_limpiar">Limpiar selección</button></div>` : ''}
     ${cmp.q && !cmp.buscando && !cmp.res.length ? `<div class="empty">No encontré nada con «${esc(cmp.q)}». Probá con menos palabras o solo la marca.</div>` : ''}
     ${cmp.res.length ? `<div class="tablewrap"><table><thead><tr><th></th><th>Artículo</th><th>Proveedor</th><th class="r">Lista</th><th class="r">Costo final unit.</th><th>Cantidad</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
       ${cmp.res.length >= 150 ? '<p class="muted" style="margin:0">Hay más resultados: agregá otra palabra para afinar.</p>' : ''}` : ''}
@@ -360,7 +361,7 @@ function comparar() {
   </section>`;
 }
 function dlgComparar() {
-  const L = cmp.res.filter(a => cmp.sel.has(a.id)), min = Math.min(...L.filter(a => a.costo != null).map(a => a.p.final));
+  const L = [...cmp.sel.values()], min = Math.min(...L.filter(a => a.costo != null).map(a => a.p.final));
   const fila = (t, f) => `<tr><th style="text-transform:none;letter-spacing:0">${t}</th>${L.map(a => `<td class="r num">${f(a)}</td>`).join('')}</tr>`;
   dlg(`<h2>Comparación</h2><div class="tablewrap"><table><thead><tr><th></th>${L.map(a => `<th class="r" style="text-transform:none;letter-spacing:0;min-width:150px">${esc(a.proveedor)}<div class="muted" style="font-weight:400">${esc(a.descripcion)}</div></th>`).join('')}</tr></thead><tbody>
   ${fila('Catálogo', a => `${esc(a.catalogo || '—')}<div class="muted">${fechaCorta(a.fecha_lista || a.fecha_precio)}</div>`)}
@@ -417,7 +418,8 @@ document.addEventListener('click', e => {
   run(async () => {
     switch (a) {
       case 'c_cmp': return dlgComparar();
-      case 'c_add': { const art = cmp.res.find(x => x.id === id), ub = art.unidades_bulto || 0;
+      case 'c_limpiar': cmp.sel.clear(); break;
+      case 'c_add': { const art = cmp.res.find(x => x.id === id) || cmp.sel.get(id), ub = art.unidades_bulto || 0;
         const cant = parseInt($('#cq_' + id)?.value) || 1, bulto = ub > 1 && ($('#cu_' + id)?.value || 'b') === 'b';
         await q(sb.rpc('agregar_a_pedido', { p_articulo: id, p_cantidad: cant, p_por_bulto: bulto }));
         peds = null; if ($('#dlg').open) $('#dlg').close();
@@ -450,7 +452,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
-  if (t.dataset.csel) { t.checked ? cmp.sel.add(t.dataset.csel) : cmp.sel.delete(t.dataset.csel); return render(); }
+  if (t.dataset.csel) { const a = cmp.res.find(x => x.id === t.dataset.csel); t.checked && a ? cmp.sel.set(a.id, a) : cmp.sel.delete(t.dataset.csel); return render(); }
   if (t.dataset.pi) { const v = parseInt(t.value); if (!(v > 0)) return render();
     run(async () => { await q(sb.from('pedido_items').update({ cantidad: v }).eq('id', t.dataset.pi)); await cargarPedidos(); }); }
 });
