@@ -306,7 +306,7 @@ document.addEventListener('keydown', e => {
 });
 
 /* ---------------- ÁREA COMPRAS ---------------- */
-let sub = 'comparar', cmp = { q: '', res: [], sel: new Map(), buscando: false }, peds = null, cTimer = null;
+let sub = 'comparar', cmp = { q: '', res: [], sel: new Map(), buscando: false, porProv: false }, peds = null, cTimer = null;
 const SUBS = [['comparar', 'Comparar precios'], ['pedidos', 'Pedidos'], ['ingreso', 'Ingreso de mercadería'], ['proveedores', 'Proveedores']];
 function compras() {
   if (peds === null) setTimeout(() => run(cargarPedidos));
@@ -329,13 +329,28 @@ function precioArt(a) {   // usa siempre la configuración actual del proveedor 
   const lista = +a.costo || 0, iva = pv.lista_incluye_iva ? 0 : lista * D.config.iva_pct / 100, env = (lista + iva) * envio / 100;
   return { lista, iva, env, envio, final: lista + iva + env };
 }
+const STOP_PROV = ['la', 'el', 'los', 'las', 'de', 'del', 'dist', 'distribuidora', 'bodega'];
+const provsQue = txt => { const tk = norm(txt).split(' ').filter(w => w && !STOP_PROV.includes(w)), junto = tk.join('');
+  return junto ? D.proveedores.filter(p => { const ws = norm(p.nombre).split(' ').filter(w => !STOP_PROV.includes(w));
+    return ws.join('').includes(junto) || tk.every(t => ws.some(w => w.startsWith(t))); }) : []; };
 async function buscarCmp() {
-  const pats = patrones(cmp.q);
-  if (!pats.length) { cmp.res = []; return render(); }
-  cmp.buscando = true;
-  const r = await q(sb.rpc('buscar_articulos', { p_patrones: pats, p_limite: 150 }));
-  r.forEach(a => a.p = precioArt(a));
-  r.sort((x, y) => (y.vigente - x.vigente) || ((x.costo == null) - (y.costo == null)) || (x.p.final - y.p.final));
+  let r;
+  if (cmp.porProv) {
+    const ps = provsQue(cmp.q);
+    if (!ps.length) { cmp.res = []; return render(); }
+    cmp.buscando = true;
+    const rows = await q(sb.from('articulos_proveedor').select('*, catalogos(nombre,fecha_lista)').in('proveedor_id', ps.map(p => p.id)).eq('activo', true).order('rubro').order('descripcion').limit(1000));
+    r = rows.map(a => ({ ...a, proveedor: prov(a.proveedor_id)?.nombre || '', catalogo: a.catalogos?.nombre, fecha_lista: a.catalogos?.fecha_lista }));
+    r.forEach(a => a.p = precioArt(a));
+    r.sort((x, y) => (y.vigente - x.vigente) || x.proveedor.localeCompare(y.proveedor) || String(x.rubro || '').localeCompare(String(y.rubro || '')) || x.descripcion.localeCompare(y.descripcion));
+  } else {
+    const pats = patrones(cmp.q);
+    if (!pats.length) { cmp.res = []; return render(); }
+    cmp.buscando = true;
+    r = await q(sb.rpc('buscar_articulos', { p_patrones: pats, p_limite: 150 }));
+    r.forEach(a => a.p = precioArt(a));
+    r.sort((x, y) => (y.vigente - x.vigente) || ((x.costo == null) - (y.costo == null)) || (x.p.final - y.p.final));
+  }
   cmp.res = r; cmp.buscando = false; render();
   const i = $('#c_q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 }
@@ -344,20 +359,22 @@ function comparar() {
   const rows = cmp.res.map(a => { const p = a.p = precioArt(a), ub = a.unidades_bulto || 0;
     if (!a.vigente) return `<tr class="nofig"><td></td><td><b>${esc(a.descripcion)}</b><div>${esc(a.codigo)} · ${esc(a.catalogo || '')}</div><div class="nofigtxt">No figura en el catálogo del ${fechaCorta(a.no_figura_desde)}</div></td><td>${esc(a.proveedor)}</td><td class="r num">antes ${fmt(a.costo)}</td><td></td><td></td><td></td></tr>`;
     return `<tr${cmp.sel.has(a.id) ? ' class="selrow"' : ''}><td><input type="checkbox" data-csel="${a.id}" ${cmp.sel.has(a.id) ? 'checked' : ''} aria-label="Comparar"></td>
-    <td style="min-width:220px"><b>${esc(a.descripcion)}</b><div class="muted">${esc(a.codigo)} · ${esc(a.catalogo || 'sin catálogo')} · ${fechaCorta(fl(a))} ${viejo(fl(a)) ? '<span class="pill warn">precio viejo</span>' : ''}</div></td>
+    <td style="min-width:220px"><b>${esc(a.descripcion)}</b><div class="muted">${a.rubro && cmp.porProv ? esc(a.rubro) + ' · ' : ''}${esc(a.codigo)} · ${esc(a.catalogo || 'sin catálogo')} · ${fechaCorta(fl(a))} ${viejo(fl(a)) ? '<span class="pill warn">precio viejo</span>' : ''}</div></td>
     <td>${esc(a.proveedor)}</td>
     ${a.costo == null ? '<td class="r"><span class="pill warn">sin precio</span></td><td class="r muted">a confirmar</td>' : `<td class="r num desg">${fmt(p.lista)}${p.iva ? `<div>+ IVA ${fmt(p.iva)}</div>` : ''}${p.env ? `<div>+ envío ${a.p.envio}% ${fmt(p.env)}</div>` : ''}</td>
     <td class="r num"><b>${fmt(p.final)}</b>${ub > 1 ? `<div class="muted">bulto x${ub}: ${fmt(p.final * ub)}</div>` : ''}</td>`}
     <td><div class="row" style="flex-wrap:nowrap;gap:4px"><input class="num" id="cq_${a.id}" value="1" inputmode="numeric" style="width:52px;min-width:0;flex:none" aria-label="Cantidad">${ub > 1 ? `<select id="cu_${a.id}" style="min-width:0;flex:none;width:auto" aria-label="Unidad"><option value="b">bultos x${ub}</option><option value="u">unid.</option></select>` : '<span class="muted" style="flex:0;align-self:center">unid.</span>'}</div></td>
     <td><button class="btn" data-act="c_add" data-id="${a.id}">Agregar</button></td></tr>`; }).join('');
   return `<section class="panel stack">
-    <div class="row" style="align-items:end"><div style="flex:4"><label for="c_q">Buscá en todos los catálogos</label><input id="c_q" class="scan" autocomplete="off" value="${esc(cmp.q)}" placeholder="Ej.: lata quilmes, gancia, fernet 750"></div>
+    <div class="row" style="align-items:end"><div style="flex:4"><label for="c_q">${cmp.porProv ? 'Nombre del proveedor' : 'Buscá en todos los catálogos'}</label><input id="c_q" class="scan" autocomplete="off" value="${esc(cmp.q)}" placeholder="${cmp.porProv ? 'Ej.: azul, origen, santa rosa' : 'Ej.: lata quilmes, gancia, fernet 750'}"></div>
+    <label class="check" style="flex:none;align-self:center;white-space:nowrap"><input type="checkbox" id="c_prov" ${cmp.porProv ? 'checked' : ''}> Buscar por proveedor</label>
     <button class="btn primary" style="flex:none;white-space:nowrap" data-act="c_cmp" ${cmp.sel.size >= 2 ? '' : 'disabled'}>Comparar${cmp.sel.size ? ` (${cmp.sel.size})` : ''}</button></div>
-    <p class="muted" style="margin:0">Ordenado del más barato al más caro según el costo final (con IVA y envío de cada proveedor). Tildá dos o más para compararlos lado a lado. Podés tildar productos de búsquedas distintas.</p>
+    ${cmp.porProv ? `<div class="row" style="gap:6px">${D.proveedores.map(p => `<button class="btn" style="flex:none;min-width:0;padding:4px 10px" data-act="c_pv" data-id="${esc(p.nombre)}">${esc(p.nombre)}</button>`).join('')}</div>` : ''}
+    <p class="muted" style="margin:0">${cmp.porProv ? 'Todo el catálogo del proveedor, ordenado por rubro' : 'Ordenado del más barato al más caro según el costo final'} ${cmp.porProv ? '' : ' (con IVA y envío de cada proveedor)'}. Tildá dos o más para compararlos lado a lado. Podés tildar productos de búsquedas distintas.</p>
     ${cmp.sel.size ? `<div class="row" style="align-items:center"><div class="muted" style="flex:3">Seleccionados: ${[...cmp.sel.values()].map(a => `<b>${esc(a.proveedor)}</b> ${esc(a.descripcion)}`).join(' · ')}</div><button class="link" style="flex:none" data-act="c_limpiar">Limpiar selección</button></div>` : ''}
     ${cmp.q && !cmp.buscando && !cmp.res.length ? `<div class="empty">No encontré nada con «${esc(cmp.q)}». Probá con menos palabras o solo la marca.</div>` : ''}
     ${cmp.res.length ? `<div class="tablewrap"><table><thead><tr><th></th><th>Artículo</th><th>Proveedor</th><th class="r">Lista</th><th class="r">Costo final unit.</th><th>Cantidad</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-      ${cmp.res.length >= 150 ? '<p class="muted" style="margin:0">Hay más resultados: agregá otra palabra para afinar.</p>' : ''}` : ''}
+      ${!cmp.porProv && cmp.res.length >= 150 ? '<p class="muted" style="margin:0">Hay más resultados: agregá otra palabra para afinar.</p>' : ''}` : ''}
     ${!cmp.q ? '<div class="empty">Escribí una marca o un producto. No importa cómo lo llame cada proveedor.</div>' : ''}
   </section>`;
 }
@@ -420,6 +437,7 @@ document.addEventListener('click', e => {
     switch (a) {
       case 'c_cmp': return dlgComparar();
       case 'c_limpiar': cmp.sel.clear(); break;
+      case 'c_pv': cmp.q = id; await buscarCmp(); return;
       case 'c_add': { const art = cmp.res.find(x => x.id === id) || cmp.sel.get(id), ub = art.unidades_bulto || 0;
         const cant = parseInt($('#cq_' + id)?.value) || 1, bulto = ub > 1 && ($('#cu_' + id)?.value || 'b') === 'b';
         await q(sb.rpc('agregar_a_pedido', { p_articulo: id, p_cantidad: cant, p_por_bulto: bulto }));
@@ -453,6 +471,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t.id === 'c_prov') { cmp.porProv = t.checked; cmp.res = []; render(); return run(buscarCmp); }
   if (t.dataset.csel) { const a = cmp.res.find(x => x.id === t.dataset.csel); t.checked && a ? cmp.sel.set(a.id, a) : cmp.sel.delete(t.dataset.csel); return render(); }
   if (t.dataset.pi) { const v = parseInt(t.value); if (!(v > 0)) return render();
     run(async () => { await q(sb.from('pedido_items').update({ cantidad: v }).eq('id', t.dataset.pi)); await cargarPedidos(); }); }
