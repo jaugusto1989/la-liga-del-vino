@@ -73,6 +73,7 @@
     const id = find([/^art[ií]culo$/, /descripci/, /detalle/, /producto/, /nombre/, /art[ií]culo/]);
     const ip = find([/precio final/, /^precio$/, /costo/, /unitario/, /precio/]);
     const ib = find([/unid.*bulto/, /x bulto/, /^bulto$/]);
+    const ir = find([/^rubro$/, /^bodega$/, /^marca$/, /^categor/]);
     if (id < 0 || ip < 0) return [];
     const rubro = String(archivo || '').replace(/\.[^.]+$/, '').replace(/\s+\d{1,2}-\d{1,2}.*$/, '');
     const out = [];
@@ -83,7 +84,7 @@
       if (!d || (sinPrecio && !tieneCod)) continue;      // sin precio solo si tiene código (queda como «sin precio»)
       const cod = tieneCod ? String(r[ic]).trim() : d.toUpperCase();
       const c = sinPrecio ? null : Math.round(p / divisor * 100) / 100, ub = ib >= 0 ? parseInt(r[ib]) || null : null;
-      out.push({ codigo: cod, descripcion: d, rubro, costo: c, unidades_bulto: ub, costo_bulto: ub && c ? Math.round(c * ub * 100) / 100 : null });
+      out.push({ codigo: cod, descripcion: d, rubro: ir >= 0 && r[ir] ? String(r[ir]).trim() : rubro, costo: c, unidades_bulto: ub, costo_bulto: ub && c ? Math.round(c * ub * 100) / 100 : null });
     }
     return out;
   }
