@@ -4,48 +4,82 @@ const prov = id => (D.proveedores || []).find(p => p.id === id);
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 async function contarArticulos() {
-  const r = await Promise.all(D.proveedores.map(p => sb.from('articulos_proveedor').select('id', { count: 'exact', head: true }).eq('proveedor_id', p.id)));
-  D.proveedores.forEach((p, i) => provCount[p.id] = r[i].count || 0); render();
+  try { D.catalogos = await q(sb.from('catalogos').select('*').order('nombre')); } catch (e) { D.catalogos = []; provCount = { _: 0 }; throw e; }
+  D.proveedores.forEach(p => provCount[p.id] = D.catalogos.filter(c => c.proveedor_id === p.id).reduce((s, c) => s + c.articulos, 0)); render();
 }
+const catsDe = id => (D.catalogos || []).filter(c => c.proveedor_id === id);
+const fechaCorta = d => d ? fecha(String(d).slice(0, 10) + 'T12:00') : '—';
+const viejo = d => !!d && (Date.now() - new Date(String(d).slice(0, 10) + 'T12:00')) > 31 * 864e5;
 function proveedores() {
   if (!Object.keys(provCount).length && D.proveedores.length) setTimeout(() => run(contarArticulos));
   const F = Listas.FORMATOS;
-  return `<section class="panel stack"><div class="row"><div style="flex:3"><h2 style="margin:0">Proveedores</h2><p class="muted" style="margin:4px 0 0">Cada proveedor tiene su propio catálogo, tal como viene en su lista. Al actualizar la lista se agregan los artículos nuevos y se actualizan los precios por código.</p></div></div>
-  <div class="tablewrap"><table><thead><tr><th>Proveedor</th><th>Formato de su lista</th><th>Lista con IVA</th><th>Envío %</th><th class="r">Artículos</th><th>Actualizada</th><th></th></tr></thead><tbody>
-  ${D.proveedores.map(p => `<tr><td><b>${esc(p.nombre)}</b></td>
-    <td><select data-prov="formato" data-id="${p.id}" aria-label="Formato"><option value="auto" ${p.formato === 'auto' ? 'selected' : ''}>Detectar solo</option>${Object.entries(F).map(([k, f]) => `<option value="${k}" ${p.formato === k ? 'selected' : ''}>${esc(f.nombre)}</option>`).join('')}</select></td>
+  return `<section class="panel stack"><div><h2 style="margin:0">Proveedores</h2><p class="muted" style="margin:4px 0 0">Cada proveedor puede tener varios catálogos. Las condiciones (IVA y envío) se aplican solas en el comparador y al ingresar mercadería.</p></div>
+  <div class="tablewrap"><table><thead><tr><th>Proveedor</th><th>Lista con IVA</th><th>Envío %</th><th>WhatsApp</th><th>Condiciones</th><th>Catálogos</th><th>Formato de lista</th><th></th></tr></thead><tbody>
+  ${D.proveedores.map(p => { const cs = catsDe(p.id), ult = cs.map(c => c.fecha_lista).filter(Boolean).sort().pop(); return `<tr><td><b>${esc(p.nombre)}</b></td>
     <td><label class="check"><input type="checkbox" data-prov="lista_incluye_iva" data-id="${p.id}" ${p.lista_incluye_iva ? 'checked' : ''}> Incluye</label></td>
-    <td><input class="num" style="width:70px" data-prov="envio_pct" data-id="${p.id}" value="${+p.envio_pct}" inputmode="decimal" aria-label="Envío"></td>
-    <td class="r num">${provCount[p.id] ?? '…'}</td><td class="muted">${p.lista_actualizada ? fecha(p.lista_actualizada) : 'nunca'}</td>
-    <td class="r" style="white-space:nowrap"><button class="link" data-act="p_imp" data-id="${p.id}">Actualizar lista</button><button class="link" data-act="p_cat" data-id="${p.id}">Ver catálogo</button><button class="link" data-act="p_del1" data-id="${p.id}">Borrar</button></td></tr>`).join('')}
+    <td><input class="num" style="width:64px" data-prov="envio_pct" data-id="${p.id}" value="${+p.envio_pct}" inputmode="decimal" aria-label="Envío"></td>
+    <td><input class="num" style="width:130px" data-prov="telefono" data-id="${p.id}" value="${esc(p.telefono || '')}" placeholder="2954123456" inputmode="tel" aria-label="WhatsApp"></td>
+    <td><input style="min-width:150px" data-prov="condiciones" data-id="${p.id}" value="${esc(p.condiciones || '')}" placeholder="Ej.: pedido mínimo, días de entrega" aria-label="Condiciones"></td>
+    <td>${D.catalogos ? `<b>${cs.length}</b> · ${provCount[p.id] ?? 0} art.${ult ? `<div class="muted">último ${fechaCorta(ult)} ${viejo(ult) ? '<span class="pill warn">viejo</span>' : ''}</div>` : ''}` : '…'}</td>
+    <td><select data-prov="formato" data-id="${p.id}" aria-label="Formato" style="min-width:140px"><option value="auto" ${p.formato === 'auto' ? 'selected' : ''}>Detectar solo</option>${Object.entries(F).map(([k, f]) => `<option value="${k}" ${p.formato === k ? 'selected' : ''}>${esc(f.nombre)}</option>`).join('')}</select></td>
+    <td class="r" style="white-space:nowrap"><button class="link" data-act="p_imp" data-id="${p.id}">Cargar catálogo</button><button class="link" data-act="p_cats" data-id="${p.id}">Ver catálogos</button><button class="link" data-act="p_del1" data-id="${p.id}">Borrar</button></td></tr>`; }).join('')}
   </tbody></table></div>
+  <p class="muted" style="margin:0">WhatsApp: cargá el número con característica, sin 0 ni 15 (ej.: 2954 123456).</p>
   <div class="row"><div style="flex:3"><label for="np">Nuevo proveedor</label><input id="np" placeholder="Nombre de la distribuidora o del vendedor"></div><button class="btn" style="flex:0" data-act="p_add">Agregar</button></div></section>`;
+}
+function dlgCatalogos(id) {
+  const cs = catsDe(id);
+  dlg(`<h2>Catálogos de ${esc(prov(id).nombre)}</h2>
+  ${cs.length ? `<div class="tablewrap"><table><thead><tr><th>Catálogo</th><th>Fecha de la lista</th><th>Cargado</th><th class="r">Artículos</th><th></th></tr></thead><tbody>
+  ${cs.map(c => `<tr><td><b>${esc(c.nombre)}</b>${c.archivo ? `<div class="muted">${esc(c.archivo)}</div>` : ''}</td><td>${fechaCorta(c.fecha_lista)} ${viejo(c.fecha_lista) ? '<span class="pill warn">precio viejo</span>' : ''}</td><td class="muted">${fecha(c.cargado)} ${hora(c.cargado)}</td><td class="r num">${c.articulos}</td>
+  <td class="r" style="white-space:nowrap"><button class="link" data-act="p_cdel" data-id="${c.id}">Borrar</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Este proveedor todavía no tiene catálogos.</div>'}
+  <div class="row"><button class="btn" data-act="p_cat" data-id="${id}">Buscar en sus artículos</button><button class="btn primary" data-act="p_imp" data-id="${id}">Cargar catálogo</button><button class="btn" data-act="cerrardlg">Cerrar</button></div>`);
 }
 function dlgImportar(id) {
   imp = { id, archivos: [] };
-  dlg(`<h2>Actualizar lista de ${esc(prov(id).nombre)}</h2>
-  <p class="muted" style="margin:0">Elegí el PDF o los Excel que te mandaron. Si viene en varios archivos, seleccionalos todos juntos.</p>
-  <input type="file" id="p_files" multiple accept=".pdf,.xlsx,.xls,.csv">
-  <div id="p_prev"></div>
-  <div class="row"><button class="btn" data-act="cerrardlg">Cancelar</button><button class="btn primary" data-act="p_ok" id="p_ok" disabled>Cargar lista</button></div>`);
+  dlg(`<h2>Cargar catálogo de ${esc(prov(id).nombre)}</h2>
+  <p class="muted" style="margin:0">Elegí uno o varios archivos (PDF o Excel). Cada archivo es un catálogo: si ya existe uno con ese nombre, se actualiza; si no, se crea.</p>
+  <input type="file" id="p_files" multiple accept=".pdf,.xlsx,.xls,.csv,image/*">
+  <div id="p_prev" class="stack"></div>
+  <div class="row"><button class="btn" data-act="cerrardlg">Cancelar</button><button class="btn primary" data-act="p_ok" id="p_ok" disabled>Cargar</button></div>`);
   $('#p_files').onchange = e => run(() => leerArchivos([...e.target.files]));
+}
+function nombreCatalogo(archivo, existentes) {
+  const base = archivo.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s*\b\d{1,2}[ ./-]\d{1,2}(?:[ ./-]\d{2,4})?\b\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  const ex = existentes.find(c => norm(c.nombre) === norm(base));
+  return ex ? ex.nombre : base.charAt(0).toUpperCase() + base.slice(1).toLowerCase();
+}
+function fechaArchivo(archivo, items) {
+  const m = /(\d{1,2})[ ._-](\d{1,2})(?:[ ._-](\d{2,4}))?(?=[^\d]|$)/.exec(archivo);
+  if (m && +m[2] >= 1 && +m[2] <= 12 && +m[1] >= 1 && +m[1] <= 31) {
+    let y = m[3] ? +m[3] : new Date().getFullYear(); if (y < 100) y += 2000;
+    const d = new Date(y, +m[2] - 1, +m[1]); if (!m[3] && d > new Date()) d.setFullYear(y - 1);
+    return d.toISOString().slice(0, 10);
+  }
+  const f = items.map(i => i.fecha_precio).filter(Boolean).sort().pop();
+  return f || new Date().toISOString().slice(0, 10);
 }
 async function leerArchivos(files) {
   const p = prov(imp.id); $('#p_prev').innerHTML = '<p class="muted">Leyendo…</p>';
-  imp.archivos = [];
+  if (!D.catalogos) D.catalogos = await q(sb.from('catalogos').select('*').order('nombre'));
+  const cs = catsDe(imp.id); imp.archivos = [];
   for (const f of files) {
+    if (/^image\//.test(f.type) || /\.(jpe?g|png|webp|heic)$/i.test(f.name)) { imp.archivos.push({ nombre: f.name, items: [], noLeidas: [], foto: true }); continue; }
     const buf = await f.arrayBuffer(); let r;
     if (/\.pdf$/i.test(f.name)) r = Listas.leer({ lineas: await Listas.pdfLineas(pdfjsLib, new Uint8Array(buf)) }, p.formato);
     else { const wb = XLSX.read(buf, { type: 'array' }); const ws = wb.Sheets[wb.SheetNames[0]]; r = Listas.leer({ filas: XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null }), archivo: f.name }, p.formato); }
-    imp.archivos.push({ nombre: f.name, ...r });
+    imp.archivos.push({ nombre: f.name, ...r, cat: nombreCatalogo(f.name, cs), fecha: fechaArchivo(f.name, r.items) });
   }
-  imp.items = Listas.unir(imp.archivos.map(a => a.items));
-  const ej = imp.items.slice(0, 6);
-  $('#p_prev').innerHTML = `<div class="tablewrap"><table><tbody>${imp.archivos.map(a => `<tr><td>${esc(a.nombre)}</td><td class="muted">${esc(Listas.FORMATOS[a.formato]?.nombre || '')}</td><td class="r num"><b>${a.items.length}</b> artículos${a.noLeidas.length ? ` · <span class="pill warn">${a.noLeidas.length} sin leer</span>` : ''}</td></tr>`).join('')}</tbody></table></div>
-  ${imp.items.length ? `<p class="muted" style="margin:0">Así quedan los primeros (revisá que el costo sea el unitario):</p><div class="tablewrap"><table><thead><tr><th>Código</th><th>Artículo</th><th class="r">Costo unit.</th></tr></thead><tbody>${ej.map(i => `<tr><td class="num">${esc(i.codigo)}</td><td>${esc(i.descripcion)}</td><td class="r num">${fmt(i.costo)}</td></tr>`).join('')}</tbody></table></div>`
-    : `<div class="msg bad">No pude leer artículos de este archivo. Probá elegir otro formato para este proveedor.</div>`}
-  ${imp.archivos.some(a => a.noLeidas.length) ? `<details><summary class="muted">Ver líneas que no se pudieron leer</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(imp.archivos.flatMap(a => a.noLeidas).slice(0, 30).join('\n'))}</pre></details>` : ''}`;
-  $('#p_ok').disabled = !imp.items.length; $('#p_ok').textContent = `Cargar ${imp.items.length} artículos`;
+  const ok = imp.archivos.filter(a => a.items.length);
+  $('#p_prev').innerHTML = `<datalist id="dl_cats">${cs.map(c => `<option value="${esc(c.nombre)}">`).join('')}</datalist>
+  ${imp.archivos.map((a, i) => a.foto ? `<div class="msg bad"><b>${esc(a.nombre)}</b>: las fotos no se pueden leer automáticamente. Pedile al proveedor la lista en PDF o Excel, o pasámela y la transcribo.</div>`
+    : !a.items.length ? `<div class="msg bad"><b>${esc(a.nombre)}</b>: no pude leer artículos. Probá elegir otro formato para este proveedor.</div>`
+    : `<div class="panel stack" style="padding:12px"><div class="muted">${esc(a.nombre)} · <b>${a.items.length}</b> artículos${a.noLeidas.length ? ` · <span class="pill warn">${a.noLeidas.length} líneas sin leer</span>` : ''}</div>
+      <div class="row"><div style="flex:2"><label for="imp_n_${i}">Nombre del catálogo</label><input id="imp_n_${i}" list="dl_cats" value="${esc(a.cat)}"></div><div><label for="imp_f_${i}">Fecha de la lista</label><input id="imp_f_${i}" type="date" value="${a.fecha}"></div></div>
+      ${cs.some(c => c.nombre === a.cat) ? '<span class="pill ok" style="align-self:start">Actualiza el catálogo existente</span>' : '<span class="pill warn" style="align-self:start">Catálogo nuevo</span>'}
+      <details><summary class="muted">Ver los primeros artículos</summary><div class="tablewrap"><table><tbody>${a.items.slice(0, 6).map(it => `<tr><td class="num">${esc(it.codigo)}</td><td>${esc(it.descripcion)}</td><td class="r num">${fmt(it.costo)}</td></tr>`).join('')}</tbody></table></div></details></div>`).join('')}
+  ${ok.length ? '<p class="muted" style="margin:0">Si un artículo que estaba en el catálogo no viene en la lista nueva, queda marcado como «no figura».</p>' : ''}`;
+  $('#p_ok').disabled = !ok.length; $('#p_ok').textContent = `Cargar ${ok.length} catálogo${ok.length === 1 ? '' : 's'}`;
 }
 async function dlgCatalogo(id, txt = '') {
   let qy = sb.from('articulos_proveedor').select('*, productos(nombre)').eq('proveedor_id', id).order('descripcion').limit(60);
@@ -170,7 +204,9 @@ async function confirmarIngreso() {
     const r = await q(sb.rpc('registrar_compra', { p: { proveedor_id: ing.prov, envio_pct: dec(ing.envio), suma_iva: ing.iva, comprobante: ing.comp,
       items: ing.items.map(l => ({ articulo_id: l.articulo_id || null, producto_id: l.producto_id || null, cantidad: parseInt(l.cantidad), costo: dec(l.costo),
         nuevo: l.producto_id ? null : { ...l.nuevo, nombre: l.nombre.trim() } })) } }));
-    const pv = ing.prov; nuevoIngreso(pv); await cargar(); busy = false;
+    const pv = ing.prov, ped = ing.pedido;
+    if (ped) await q(sb.from('pedidos').update({ estado: 'recibido', recibido: new Date().toISOString() }).eq('id', ped));
+    nuevoIngreso(pv); peds = null; await cargar(); busy = false;
     toast(`Mercadería cargada: ${r.items} productos por ${fmt(r.total)}.`);
   } finally { busy = false; }
 }
@@ -181,7 +217,7 @@ function perfilesPorCategoria() {
   <p class="muted" style="margin:0">Cambia el perfil de todos los productos de esa categoría (también los que tenían precio fijo).</p>
   <div class="row"><div><label for="ap_r">Categoría</label><select id="ap_r">${D.rubros.map(r => `<option value="${r.id}">${esc(r.nombre)} (${D.productos.filter(p => p.rubro_id === r.id).length})</option>`).join('')}</select></div>
   <div><label for="ap_p">Perfil</label><select id="ap_p">${D.perfiles.map(f => `<option value="${f.id}">${esc(f.nombre)} +${+f.porcentaje}%</option>`).join('')}</select></div>
-  <button class="btn primary" style="flex:0;white-space:nowrap" data-act="ap_ok">Aplicar</button></div>
+  <button class="btn primary" style="flex:none;white-space:nowrap" data-act="ap_ok">Aplicar</button></div>
   <div class="row"><div style="flex:3"><label for="nr">Nueva categoría</label><input id="nr" placeholder="Ej.: Vinos premium"></div><button class="btn" style="flex:0" data-act="nr_ok">Crear</button></div></section>`;
 }
 
@@ -195,9 +231,18 @@ document.addEventListener('click', e => {
       case 'p_imp': return dlgImportar(id);
       case 'p_cat': return dlgCatalogo(id);
       case 'p_ok': { const btn = $('#p_ok'); btn.disabled = true; btn.textContent = 'Cargando…';
-        const r = await q(sb.rpc('importar_lista', { p_proveedor: imp.id, p_items: imp.items }));
-        $('#dlg').close(); D.proveedores = await q(sb.from('proveedores').select('*').eq('activo', true).order('nombre')); provCount = {};
-        msg = ['ok', `Lista cargada: ${r.total} artículos (${r.nuevos} nuevos, ${r.precios_cambiados} con precio nuevo).`]; break; }
+        let tot = { total: 0, nuevos: 0, precios_cambiados: 0, no_figuran: 0 }, n = 0;
+        for (const [i, ar] of imp.archivos.entries()) { if (!ar.items.length) continue;
+          const nom = $('#imp_n_' + i).value.trim(); if (!nom) { btn.disabled = false; btn.textContent = 'Cargar'; throw new Error('Poné un nombre a cada catálogo.'); }
+          const r = await q(sb.rpc('importar_catalogo', { p_proveedor: imp.id, p_nombre: nom, p_fecha: $('#imp_f_' + i).value || null, p_archivo: ar.nombre, p_items: ar.items }));
+          for (const k in tot) tot[k] += r[k] || 0; n++; }
+        $('#dlg').close(); D.proveedores = await q(sb.from('proveedores').select('*').eq('activo', true).order('nombre')); D.catalogos = null; provCount = {};
+        msg = ['ok', `${n} catálogo${n === 1 ? '' : 's'} cargado${n === 1 ? '' : 's'}: ${tot.total} artículos (${tot.nuevos} nuevos, ${tot.precios_cambiados} con precio nuevo${tot.no_figuran ? `, ${tot.no_figuran} ya no figuran` : ''}).`]; break; }
+      case 'p_cats': return dlgCatalogos(id);
+      case 'p_cdel': { const c = D.catalogos.find(c => c.id === id);
+        return dlg(`<h2>¿Borrar el catálogo «${esc(c.nombre)}»?</h2><p style="margin:0">Se borran sus ${c.articulos} artículos. Tus productos y las compras registradas no se tocan.</p><div class="row"><button class="btn" data-act="p_cats" data-id="${c.proveedor_id}">Volver</button><button class="btn primary" data-act="p_cdel2" data-id="${c.id}">Borrar catálogo</button></div>`); }
+      case 'p_cdel2': { const c = D.catalogos.find(c => c.id === id); await q(sb.from('catalogos').delete().eq('id', id));
+        await contarArticulos(); return dlgCatalogos(c.proveedor_id); }
       case 'p_add': { const n = $('#np').value.trim(); if (!n) return $('#np').focus();
         await q(sb.from('proveedores').insert({ nombre: n })); D.proveedores = await q(sb.from('proveedores').select('*').eq('activo', true).order('nombre')); provCount = {}; msg = ['ok', 'Proveedor agregado.']; break; }
       case 'p_del1': { const p = prov(id), n = provCount[p.id] ?? 0;
@@ -258,4 +303,154 @@ document.addEventListener('keydown', e => {
     const art = await q(sb.from('articulos_proveedor').select('id,costo,codigo,descripcion').eq('proveedor_id', ing.prov).eq('producto_id', p.id).limit(1));
     ing.items.push({ articulo_id: art[0]?.id || null, desc: art[0] ? `${art[0].codigo} · ${art[0].descripcion}` : '', nombre: p.nombre, producto_id: p.id, cantidad: 1, costo: art[0]?.costo ?? '', nuevo: {} });
     ing.q = ''; ing.sug = []; render(); });
+});
+
+/* ---------------- ÁREA COMPRAS ---------------- */
+let sub = 'comparar', cmp = { q: '', res: [], sel: new Set(), buscando: false }, peds = null, cTimer = null;
+const SUBS = [['comparar', 'Comparar precios'], ['pedidos', 'Pedidos'], ['ingreso', 'Ingreso de mercadería'], ['proveedores', 'Proveedores']];
+function compras() {
+  if (peds === null) setTimeout(() => run(cargarPedidos));
+  const n = (peds || []).filter(p => p.estado === 'armado').reduce((s, p) => s + p.pedido_items.length, 0);
+  return `<div class="areahd"><b>Compras</b><nav class="subnav">${SUBS.map(([k, t]) => `<button data-sub="${k}" aria-current="${sub === k}">${t}${k === 'pedidos' && n ? ` <span class="cnt">${n}</span>` : ''}</button>`).join('')}</nav></div>
+  ${({ comparar, pedidos, ingreso, proveedores })[sub]()}`;
+}
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+const SINON = [['cerveza', 'cerv', 'cerve'], ['malbec', 'mal', 'mb'], ['cabernet', 'cab', 'caber'], ['sauvignon', 'sauv', 'sauvig'], ['chardonnay', 'chard', 'chardon'],
+  ['reserva', 'rva', 'rsve', 'rsv', 'res', 'reserve'], ['espumante', 'esp', 'espum', 'champ', 'champagne', 'champana'], ['aperitivo', 'ap', 'aperit', 'aper'], ['gaseosa', 'gas'],
+  ['energizante', 'ener', 'energ'], ['blanco', 'bco', 'blanc'], ['tinto', 'tto'], ['whisky', 'whiskey', 'whisk'], ['estuche', 'est'], ['botella', 'bot'], ['litro', 'lt', 'lts', 'ltr', 'ltro'], ['vermouth', 'vermut', 'vermu']];
+function patrones(txt) {
+  return norm(txt).split(' ').filter(w => w.length >= 2 || /\d/.test(w)).map(w => {
+    const g = SINON.find(g => g.some(x => x === w || (w.length >= 4 && x.startsWith(w))));
+    return '\\m(' + (g ? [...new Set([w, ...g])] : [w]).join('|') + ')';
+  });
+}
+function precioArt(a) {
+  const lista = +a.costo || 0, iva = a.lista_incluye_iva ? 0 : lista * D.config.iva_pct / 100, env = (lista + iva) * (+a.envio_pct || 0) / 100;
+  return { lista, iva, env, final: lista + iva + env };
+}
+async function buscarCmp() {
+  const pats = patrones(cmp.q);
+  if (!pats.length) { cmp.res = []; return render(); }
+  cmp.buscando = true;
+  const r = await q(sb.rpc('buscar_articulos', { p_patrones: pats, p_limite: 150 }));
+  r.forEach(a => a.p = precioArt(a));
+  r.sort((x, y) => (y.vigente - x.vigente) || (x.p.final - y.p.final));
+  cmp.res = r; cmp.buscando = false; render();
+  const i = $('#c_q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+}
+function comparar() {
+  const fl = a => a.fecha_lista || a.fecha_precio;
+  const rows = cmp.res.map(a => { const p = a.p, ub = a.unidades_bulto || 0;
+    if (!a.vigente) return `<tr class="nofig"><td></td><td><b>${esc(a.descripcion)}</b><div>${esc(a.codigo)} · ${esc(a.catalogo || '')}</div><div class="nofigtxt">No figura en el catálogo del ${fechaCorta(a.no_figura_desde)}</div></td><td>${esc(a.proveedor)}</td><td class="r num">antes ${fmt(a.costo)}</td><td></td><td></td><td></td></tr>`;
+    return `<tr${cmp.sel.has(a.id) ? ' class="selrow"' : ''}><td><input type="checkbox" data-csel="${a.id}" ${cmp.sel.has(a.id) ? 'checked' : ''} aria-label="Comparar"></td>
+    <td style="min-width:220px"><b>${esc(a.descripcion)}</b><div class="muted">${esc(a.codigo)} · ${esc(a.catalogo || 'sin catálogo')} · ${fechaCorta(fl(a))} ${viejo(fl(a)) ? '<span class="pill warn">precio viejo</span>' : ''}</div></td>
+    <td>${esc(a.proveedor)}</td>
+    <td class="r num desg">${fmt(p.lista)}${p.iva ? `<div>+ IVA ${fmt(p.iva)}</div>` : ''}${p.env ? `<div>+ envío ${+a.envio_pct}% ${fmt(p.env)}</div>` : ''}</td>
+    <td class="r num"><b>${fmt(p.final)}</b>${ub > 1 ? `<div class="muted">bulto x${ub}: ${fmt(p.final * ub)}</div>` : ''}</td>
+    <td><div class="row" style="flex-wrap:nowrap;gap:4px"><input class="num" id="cq_${a.id}" value="1" inputmode="numeric" style="width:52px;min-width:0;flex:none" aria-label="Cantidad">${ub > 1 ? `<select id="cu_${a.id}" style="min-width:0;flex:none;width:auto" aria-label="Unidad"><option value="b">bultos x${ub}</option><option value="u">unid.</option></select>` : '<span class="muted" style="flex:0;align-self:center">unid.</span>'}</div></td>
+    <td><button class="btn" data-act="c_add" data-id="${a.id}">Agregar</button></td></tr>`; }).join('');
+  return `<section class="panel stack">
+    <div class="row" style="align-items:end"><div style="flex:4"><label for="c_q">Buscá en todos los catálogos</label><input id="c_q" class="scan" autocomplete="off" value="${esc(cmp.q)}" placeholder="Ej.: lata quilmes, gancia, fernet 750"></div>
+    <button class="btn primary" style="flex:none;white-space:nowrap" data-act="c_cmp" ${cmp.sel.size >= 2 ? '' : 'disabled'}>Comparar${cmp.sel.size ? ` (${cmp.sel.size})` : ''}</button></div>
+    <p class="muted" style="margin:0">Ordenado del más barato al más caro según el costo final (con IVA y envío de cada proveedor). Tildá dos o más para compararlos lado a lado.</p>
+    ${cmp.q && !cmp.buscando && !cmp.res.length ? `<div class="empty">No encontré nada con «${esc(cmp.q)}». Probá con menos palabras o solo la marca.</div>` : ''}
+    ${cmp.res.length ? `<div class="tablewrap"><table><thead><tr><th></th><th>Artículo</th><th>Proveedor</th><th class="r">Lista</th><th class="r">Costo final unit.</th><th>Cantidad</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${cmp.res.length >= 150 ? '<p class="muted" style="margin:0">Hay más resultados: agregá otra palabra para afinar.</p>' : ''}` : ''}
+    ${!cmp.q ? '<div class="empty">Escribí una marca o un producto. No importa cómo lo llame cada proveedor.</div>' : ''}
+  </section>`;
+}
+function dlgComparar() {
+  const L = cmp.res.filter(a => cmp.sel.has(a.id)), min = Math.min(...L.map(a => a.p.final));
+  const fila = (t, f) => `<tr><th style="text-transform:none;letter-spacing:0">${t}</th>${L.map(a => `<td class="r num">${f(a)}</td>`).join('')}</tr>`;
+  dlg(`<h2>Comparación</h2><div class="tablewrap"><table><thead><tr><th></th>${L.map(a => `<th class="r" style="text-transform:none;letter-spacing:0;min-width:150px">${esc(a.proveedor)}<div class="muted" style="font-weight:400">${esc(a.descripcion)}</div></th>`).join('')}</tr></thead><tbody>
+  ${fila('Catálogo', a => `${esc(a.catalogo || '—')}<div class="muted">${fechaCorta(a.fecha_lista || a.fecha_precio)}</div>`)}
+  ${fila('Precio de lista', a => fmt(a.p.lista))}
+  ${fila('IVA', a => a.p.iva ? '+ ' + fmt(a.p.iva) : 'incluido')}
+  ${fila('Envío', a => a.p.env ? `+ ${fmt(a.p.env)} (${+a.envio_pct}%)` : '—')}
+  ${fila('<b>Costo final</b>', a => `<b class="${a.p.final === min ? 'best' : ''}">${fmt(a.p.final)}</b>`)}
+  ${fila('Diferencia', a => a.p.final === min ? '<span class="pill ok">el más barato</span>' : '+ ' + fmt(a.p.final - min))}
+  ${fila('Bulto', a => a.unidades_bulto > 1 ? `x${a.unidades_bulto} · ${fmt(a.p.final * a.unidades_bulto)}` : '—')}
+  ${fila('', a => `<button class="btn" data-act="c_add" data-id="${a.id}">Agregar al pedido</button>`)}
+  </tbody></table></div><button class="btn" data-act="cerrardlg">Cerrar</button>`);
+}
+
+/* ---------------- PEDIDOS ---------------- */
+async function cargarPedidos() {
+  try { peds = await q(sb.from('pedidos').select('*, proveedores(nombre,telefono,envio_pct,lista_incluye_iva), pedido_items(*)').in('estado', ['armado', 'enviado']).order('creado')); } catch (e) { peds = []; throw e; }
+  render();
+}
+const unidadesItem = i => i.cantidad * (i.por_bulto ? (i.unidades_bulto || 1) : 1);
+const precioItem = (i, pr) => precioArt({ costo: i.costo, lista_incluye_iva: pr.lista_incluye_iva, envio_pct: pr.envio_pct });
+function pedidos() {
+  if (peds === null) return '<div class="empty">Cargando pedidos…</div>';
+  if (!peds.length) return `<section class="panel"><div class="empty">No hay pedidos en armado. Buscá productos en «Comparar precios» y tocá «Agregar».</div></section>`;
+  return `<div class="stack">${peds.map(p => { const pr = p.proveedores;
+    const t = p.pedido_items.reduce((s, i) => { const x = precioItem(i, pr), u = unidadesItem(i); return { lista: s.lista + x.lista * u, final: s.final + x.final * u, u: s.u + u }; }, { lista: 0, final: 0, u: 0 });
+    return `<section class="panel stack"><div class="row" style="align-items:center">
+      <div style="flex:3"><h2 style="margin:0">${esc(pr.nombre)} <span class="pill ${p.estado === 'armado' ? 'warn' : 'ok'}">${p.estado === 'armado' ? 'En armado' : 'Enviado el ' + fecha(p.enviado)}</span></h2><div class="muted">${p.pedido_items.length} artículos · ${t.u} unidades</div></div>
+      <div style="flex:1;text-align:right"><div class="muted">Lista ${fmt(t.lista)}</div><b class="num" style="font-size:20px">${fmt(t.final)}</b><div class="muted">con IVA y envío</div></div></div>
+    <div class="tablewrap"><table><thead><tr><th>Código</th><th>Artículo</th><th>Cantidad</th><th class="r">Costo final</th><th></th></tr></thead><tbody>
+    ${p.pedido_items.map(i => `<tr><td class="num">${esc(i.codigo || '')}</td><td>${esc(i.descripcion)}</td>
+      <td><div class="row" style="flex-wrap:nowrap;gap:6px;align-items:center"><input class="num" style="width:60px;min-width:0;flex:none" data-pi="${i.id}" value="${i.cantidad}" inputmode="numeric" aria-label="Cantidad"><span class="muted" style="flex:none;white-space:nowrap">${i.por_bulto ? `bultos x${i.unidades_bulto}` : 'unid.'}</span></div></td>
+      <td class="r num">${fmt(precioItem(i, pr).final * unidadesItem(i))}</td><td class="r"><button class="link" data-act="pd_del" data-id="${i.id}">Quitar</button></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="row"><button class="btn primary" style="flex:none;white-space:nowrap" data-act="pd_wa" data-id="${p.id}">Texto para WhatsApp</button>
+      ${p.estado === 'armado' ? `<button class="btn" style="flex:none;white-space:nowrap" data-act="pd_env" data-id="${p.id}">Marcar como enviado</button>` : ''}
+      <button class="btn" style="flex:none;white-space:nowrap" data-act="pd_rec" data-id="${p.id}">Llegó: pasar a ingreso</button>
+      <button class="link" style="flex:none;white-space:nowrap" data-act="pd_can" data-id="${p.id}">Descartar pedido</button></div></section>`; }).join('')}</div>`;
+}
+function textoPedido(p) {
+  const u = i => i.por_bulto ? `${i.cantidad} ${i.cantidad === 1 ? 'bulto' : 'bultos'}${i.unidades_bulto ? ` x${i.unidades_bulto}` : ''}` : `${i.cantidad} ${i.cantidad === 1 ? 'unidad' : 'unidades'}`;
+  return `Hola! Te paso el pedido de ${D.config.nombre_local}:\n\n${p.pedido_items.map(i => `• ${u(i)} - ${i.codigo ? `[${i.codigo}] ` : ''}${i.descripcion}`).join('\n')}\n\nGracias!`;
+}
+const waNum = t => { let d = String(t || '').replace(/\D/g, ''); if (!d) return ''; if (d.startsWith('00')) d = d.slice(2); if (d.startsWith('54')) return d; return '549' + d.replace(/^0/, ''); };
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-sub]'); if (!t) return;
+  sub = t.dataset.sub; msg = null; if (sub === 'pedidos') peds = null; render();
+  if (sub === 'comparar') { const i = $('#c_q'); if (i) i.focus(); }
+});
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const a = t.dataset.act, id = t.dataset.id;
+  if (!/^(c_|pd_)/.test(a)) return;
+  run(async () => {
+    switch (a) {
+      case 'c_cmp': return dlgComparar();
+      case 'c_add': { const art = cmp.res.find(x => x.id === id), ub = art.unidades_bulto || 0;
+        const cant = parseInt($('#cq_' + id)?.value) || 1, bulto = ub > 1 && ($('#cu_' + id)?.value || 'b') === 'b';
+        await q(sb.rpc('agregar_a_pedido', { p_articulo: id, p_cantidad: cant, p_por_bulto: bulto }));
+        peds = null; if ($('#dlg').open) $('#dlg').close();
+        msg = ['ok', `Agregado al pedido de ${art.proveedor}: ${cant} ${bulto ? 'bulto(s)' : 'unid.'} de ${art.descripcion}.`]; break; }
+      case 'pd_del': await q(sb.from('pedido_items').delete().eq('id', id)); await cargarPedidos(); return;
+      case 'pd_env': await q(sb.from('pedidos').update({ estado: 'enviado', enviado: new Date().toISOString() }).eq('id', id)); await cargarPedidos(); return;
+      case 'pd_wa': { const p = peds.find(x => x.id === id), txt = textoPedido(p), n = waNum(p.proveedores.telefono);
+        return dlg(`<h2>Pedido para ${esc(p.proveedores.nombre)}</h2><textarea id="pd_txt" rows="12" style="width:100%;font:13px/1.45 var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px">${esc(txt)}</textarea>
+        <div class="row"><button class="btn primary" data-act="pd_copy">Copiar texto</button>${n ? `<a class="btn" style="text-align:center;text-decoration:none" target="_blank" rel="noopener" href="https://wa.me/${n}?text=${encodeURIComponent(txt)}">Abrir WhatsApp</a>` : ''}<button class="btn" data-act="cerrardlg">Cerrar</button></div>
+        ${n ? '' : '<p class="muted" style="margin:0">Cargá el WhatsApp del proveedor en «Proveedores» para abrirlo directo.</p>'}`); }
+      case 'pd_copy': { const ta = $('#pd_txt'); try { await navigator.clipboard.writeText(ta.value); } catch (er) { ta.select(); document.execCommand('copy'); }
+        t.textContent = 'Copiado'; return; }
+      case 'pd_can': return dlg(`<h2>¿Descartar este pedido?</h2><p style="margin:0">Se borra el pedido con todos sus artículos.</p><div class="row"><button class="btn" data-act="cerrardlg">Volver</button><button class="btn primary" data-act="pd_can2" data-id="${id}">Descartar</button></div>`);
+      case 'pd_can2': await q(sb.from('pedidos').update({ estado: 'cancelado' }).eq('id', id)); $('#dlg').close(); await cargarPedidos(); return;
+      case 'pd_rec': { const p = peds.find(x => x.id === id), ids = p.pedido_items.map(i => i.articulo_id).filter(Boolean);
+        const arts = ids.length ? await q(sb.from('articulos_proveedor').select('*, productos(nombre)').in('id', ids)) : [];
+        nuevoIngreso(p.proveedor_id); ing.pedido = p.id;
+        ing.items = p.pedido_items.map(i => { const art = arts.find(x => x.id === i.articulo_id);
+          const l = art ? lineaDesdeArticulo(art) : { articulo_id: null, desc: i.descripcion, nombre: nombreLimpio(i.descripcion), producto_id: null, costo: i.costo ?? '',
+            nuevo: { nombre: nombreLimpio(i.descripcion), codigo_barras: '', rubro_id: adivinarRubro(i.descripcion), perfil_id: D.perfiles[0]?.id, stock_minimo: 0 } };
+          l.cantidad = unidadesItem(i); return l; });
+        sub = 'ingreso'; msg = ['ok', `Pedido de ${p.proveedores.nombre} cargado. Revisá lo que llegó (cantidades y costos) y confirmá con «Cargar al stock».`]; break; }
+    }
+    render();
+  });
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'c_q') { cmp.q = t.value; clearTimeout(cTimer); cTimer = setTimeout(() => run(buscarCmp), 300); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.csel) { t.checked ? cmp.sel.add(t.dataset.csel) : cmp.sel.delete(t.dataset.csel); return render(); }
+  if (t.dataset.pi) { const v = parseInt(t.value); if (!(v > 0)) return render();
+    run(async () => { await q(sb.from('pedido_items').update({ cantidad: v }).eq('id', t.dataset.pi)); await cargarPedidos(); }); }
 });

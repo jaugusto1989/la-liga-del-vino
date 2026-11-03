@@ -101,7 +101,7 @@ async function cargarCaja() {
 
 /* ---------------- RENDER ---------------- */
 const TABS = [['vender', 'Vender'], ['tickets', 'Tickets del día'], ['caja', 'Caja del día'], ['productos', 'Productos'],
-  ['promos', 'Promociones', 1], ['ingreso', 'Ingreso de mercadería', 1], ['proveedores', 'Proveedores', 1], ['clientes', 'Cuentas corrientes'], ['perfiles', 'Perfiles de ganancia', 1], ['ajustes', 'Ajustes', 1]];
+  ['promos', 'Promociones', 1], ['compras', 'Compras', 1], ['clientes', 'Cuentas corrientes'], ['perfiles', 'Perfiles de ganancia', 1], ['ajustes', 'Ajustes', 1]];
 function render() {
   if (!U) return;
   $('#hdr').hidden = false;
@@ -113,7 +113,7 @@ function render() {
   const bajos = D.catalogo.filter(p => p.stock_bajo);
   const banner = bajos.length ? `<div class="banner"><b>Stock bajo:</b> ${bajos.map(p => `${esc(p.nombre)} (${p.stock})`).join(' · ')}</div>` : '';
   const top = msg ? `<div class="msg ${msg[0]} topmsg">${esc(msg[1])}</div>` : '';
-  $('#app').innerHTML = banner + top + ({ vender, tickets, caja, productos, promos, clientes, perfiles, ajustes, ingreso, proveedores })[tab]();
+  $('#app').innerHTML = banner + top + ({ vender, tickets, caja, productos, promos, clientes, perfiles, ajustes, ingreso, proveedores, compras })[tab]();
   if (tab === 'vender' && !$('#dlg').open) { const i = $('#scan'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 }
 function dlg(html) { $('#dlgBody').oninput = null; $('#dlgBody').innerHTML = html; if (!$('#dlg').open) $('#dlg').showModal(); }
@@ -534,4 +534,4 @@ document.addEventListener('keydown', e => {
   render();
 });
 sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT') { U = null; pantallaLogin(); } });
-iniciar();
+window.addEventListener('DOMContentLoaded', iniciar);   // espera a que carguen todos los scripts

@@ -103,3 +103,16 @@ footer{color:var(--muted);font-size:12px;padding-block:0 30px;text-align:center}
   #print .l{display:flex;justify-content:space-between;gap:6px}
 }
 
+
+/* Área Compras */
+.areahd{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;background:var(--accent);color:var(--accent-ink);border-radius:12px;padding:10px 14px;margin-bottom:14px}
+.areahd>b{font:800 19px var(--f-display);letter-spacing:-.01em}
+.subnav{display:flex;flex-wrap:wrap;gap:4px}
+.subnav button{border:0;background:transparent;color:inherit;opacity:.85;font:600 14px var(--f-body);padding:6px 12px;border-radius:8px;cursor:pointer}
+.subnav button[aria-current="true"]{background:var(--accent-ink);color:var(--accent);opacity:1}
+.subnav .cnt{display:inline-block;min-width:18px;padding:0 5px;border-radius:99px;background:var(--warn);color:#fff;font-size:11px;text-align:center}
+tr.nofig td{color:var(--bad);background:var(--bad-soft)}
+.nofigtxt{font-weight:700;font-size:12px;margin-top:2px}
+.desg div{font-size:12px;color:var(--muted)}
+.best{color:var(--ok)}
+tr.selrow td{background:var(--accent-soft)}
