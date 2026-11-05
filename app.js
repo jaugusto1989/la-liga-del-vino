@@ -109,7 +109,7 @@ function render() {
   $('#rolTxt').textContent = `${U.nombre} · ${dueno() ? 'Dueño' : 'Vendedor'}`;
   $('#tabs').innerHTML = TABS.filter(t => !t[2] || dueno()).map(([k, n]) => `<button data-tab="${k}" aria-current="${tab === k}">${n}</button>`).join('');
   $('#status').innerHTML = (D.caja ? `<span class="pill ok">Caja abierta</span> desde ${hora(D.caja.apertura)}` : `<span class="pill bad">Caja cerrada</span>`)
-    + ` <button class="link" data-act="salir">Salir</button>`;
+    + ` <button class="link" data-act="clave">Cambiar contraseña</button> <button class="link" data-act="salir">Salir</button>`;
   const bajos = D.catalogo.filter(p => p.stock_bajo);
   const banner = bajos.length ? `<div class="banner"><b>Stock bajo:</b> ${bajos.map(p => `${esc(p.nombre)} (${p.stock})`).join(' · ')}</div>` : '';
   const top = msg ? `<div class="msg ${msg[0]} topmsg">${esc(msg[1])}</div>` : '';
@@ -451,6 +451,11 @@ document.addEventListener('click', e => {
   run(async () => {
     switch (a) {
       case 'modoAlta': $('#lnWrap').hidden = false; $('#lbtn').textContent = 'Crear cuenta'; t.hidden = true; return;
+      case 'clave': return dlgClave(false);
+      case 'clave_ok': { const a = $('#cl1').value, b = $('#cl2').value;
+        if (a.length < 6) throw new Error('La contraseña tiene que tener al menos 6 caracteres.');
+        if (a !== b) throw new Error('Las dos contraseñas no coinciden.');
+        await q(sb.auth.updateUser({ password: a })); $('#dlg').close(); msg = ['ok', 'Contraseña cambiada. La próxima vez entrá con la nueva.']; break; }
       case 'salir': await sb.auth.signOut(); U = null; location.reload(); return;
       case 'add': case 'mas': agregar(k, id); break;
       case 'menos': { const l = cart.find(l => l.k === k && l.id === id); l.q--; if (!l.q) cart = cart.filter(x => x !== l); break; }
@@ -533,5 +538,16 @@ document.addEventListener('keydown', e => {
   if (hit) agregar(hit.k, hit.id); else { msg = ['bad', `No encontré el código ${v}. Revisalo o cargalo en Productos.`]; qtxt = ''; }
   render();
 });
-sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT') { U = null; pantallaLogin(); } });
+sb.auth.onAuthStateChange(ev => {
+  if (ev === 'SIGNED_OUT') { U = null; pantallaLogin(); }
+  if (ev === 'PASSWORD_RECOVERY') setTimeout(() => dlgClave(true), 800);   // entró con el link de "recuperar contraseña"
+});
+function dlgClave(recupero) {
+  dlg(`<h2>${recupero ? 'Elegí tu contraseña nueva' : 'Cambiar contraseña'}</h2>
+  ${recupero ? '<p class="muted" style="margin:0">Entraste con el link de recuperación. Poné una contraseña nueva para la próxima vez.</p>' : ''}
+  <div><label for="cl1">Contraseña nueva</label><input id="cl1" type="password" autocomplete="new-password" minlength="6"></div>
+  <div><label for="cl2">Repetila</label><input id="cl2" type="password" autocomplete="new-password" minlength="6"></div>
+  <div class="row"><button class="btn" data-act="cerrardlg">Cancelar</button><button class="btn primary" data-act="clave_ok">Guardar contraseña</button></div>`);
+  $('#cl1').focus();
+}
 window.addEventListener('DOMContentLoaded', iniciar);   // espera a que carguen todos los scripts
