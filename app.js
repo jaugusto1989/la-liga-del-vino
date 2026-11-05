@@ -11,6 +11,7 @@ const dec = v => +String(v ?? '').replace(',', '.') || 0;                       
 const pctTxt = (p, c) => c ? ((p - c) / c * 100).toFixed(1).replace('.', ',') + '%' : '—';
 
 function traducir(m) {
+  if (/should be different from the old password/i.test(m)) return 'Esa ya es tu contraseña actual. Si querés cambiarla, elegí una distinta.';
   if (/Invalid login/i.test(m)) return 'Mail o contraseña incorrectos.';
   if (/Email not confirmed/i.test(m)) return 'Todavía no confirmaste tu mail. Revisá tu casilla.';
   if (/duplicate key.*codigo_barras/i.test(m)) return 'Ya hay un producto con ese código de barras.';
@@ -139,7 +140,7 @@ function buscar(t) {
 function agregar(k, id) {
   const nc = cart.map(l => ({ ...l })), l = nc.find(l => l.k === k && l.id === id);
   l ? l.q++ : nc.push({ k, id, q: 1 });
-  const d = demanda(nc), falta = Object.keys(d).find(pid => d[pid] > (prodC(pid)?.stock ?? 0));
+  const d = demanda(nc), falta = !D.config.vender_sin_stock && Object.keys(d).find(pid => d[pid] > (prodC(pid)?.stock ?? 0));
   if (falta) { msg = ['bad', `No hay stock suficiente de ${prodC(falta)?.nombre || 'un producto'} (quedan ${prodC(falta)?.stock ?? 0}).`]; return; }
   cart = nc; msg = null; qtxt = '';
 }
@@ -169,7 +170,7 @@ function vender() {
     ${bonif ? `<div><label for="motivo">Motivo o a quién fue</label><input id="motivo" value="${esc(motivo)}" placeholder="Ej.: regalo de cumpleaños para Juan"></div>
     <p class="muted" style="margin:0">Descuenta el stock y registra el costo de la mercadería. No entra plata a la caja.</p>
     <button class="btn primary big" data-act="cobrar" ${cart.length && !busy ? '' : 'disabled'}>${busy ? 'Registrando…' : 'Registrar bonificación'}</button>` : `
-    <div><label for="dv">Descuento</label><div class="row" style="flex-wrap:nowrap"><select id="dt" style="flex:0;min-width:64px" aria-label="Tipo de descuento"><option value="%" ${desc.t === '%' ? 'selected' : ''}>%</option><option value="$" ${desc.t === '$' ? 'selected' : ''}>$</option></select><input id="dv" class="num" inputmode="decimal" value="${esc(desc.v)}" placeholder="0" style="min-width:60px">${[10, 15].map(x => `<button class="btn" style="flex:0;min-width:0" data-act="dq" data-v="${x}">${x}%</button>`).join('')}</div></div>
+    <div><label for="dv">Descuento</label><div class="row" style="flex-wrap:nowrap"><select id="dt" style="flex:0;min-width:64px" aria-label="Tipo de descuento"><option value="%" ${desc.t === '%' ? 'selected' : ''}>%</option><option value="$" ${desc.t === '$' ? 'selected' : ''}>$</option></select><input id="dv" class="num" inputmode="decimal" value="${esc(desc.v)}" placeholder="0" style="min-width:60px">${[10, 15].map(x => `<button class="btn" style="flex:none;min-width:0;padding:8px 10px" data-act="dq" data-v="${x}">${x}%</button>`).join('')}</div></div>
     <h2>Cobro</h2>
     ${pagos.map((x, i) => `<div class="row"><div><label for="pm${i}">Medio</label><select id="pm${i}" data-pago="m" data-i="${i}">${D.medios.map(m => `<option value="${m.id}" ${m.id === x.m ? 'selected' : ''}>${esc(m.nombre)}</option>`).join('')}</select></div>
       <div><label for="pa${i}">Monto</label><input id="pa${i}" class="num" inputmode="numeric" data-pago="monto" data-i="${i}" value="${esc(x.monto)}" placeholder="${Math.max(resta + money(x.monto), 0)}"></div>
@@ -288,7 +289,8 @@ function caja() {
 function cfgCaja() {
   return `<section class="panel stack"><h2>Opciones de caja</h2>
   <label class="check"><input type="checkbox" data-cfg="cierre_ciego" ${D.config.cierre_ciego ? 'checked' : ''}> Cierre ciego: el vendedor no ve el efectivo esperado</label>
-  <label class="check"><input type="checkbox" data-cfg="vendedor_puede_anular" ${D.config.vendedor_puede_anular ? 'checked' : ''}> El vendedor puede anular tickets</label></section>`;
+  <label class="check"><input type="checkbox" data-cfg="vendedor_puede_anular" ${D.config.vendedor_puede_anular ? 'checked' : ''}> El vendedor puede anular tickets</label>
+  <label class="check"><input type="checkbox" data-cfg="vender_sin_stock" ${D.config.vender_sin_stock ? 'checked' : ''}> Permitir vender sin stock (el stock queda en negativo hasta que cargues mercadería)</label></section>`;
 }
 function historial() {
   return `<section class="panel stack"><h2>Cierres anteriores</h2>${D.cierres.length ? `<div class="tablewrap"><table><thead><tr><th>Cierre</th><th class="r">Esperado</th><th class="r">Contado</th><th class="r">Diferencia</th></tr></thead><tbody>
@@ -362,7 +364,7 @@ const sumas = items => ({ sep: items.reduce((s, i) => s + (prodD(i.pid)?.precio 
 function promos() {
   return `<section class="panel stack" style="max-width:960px"><div class="row"><div style="flex:3"><h2 style="margin:0">Promociones y combos</h2><p class="muted" style="margin:4px 0 0">Le ponés un precio al combo. Al venderlo, se descuenta el stock de cada producto que lo forma.</p></div><button class="btn primary" style="flex:0;white-space:nowrap" data-act="ncombo" ${D.productos.length ? '' : 'disabled'}>+ Promoción</button></div>
   ${D.promos.length ? `<div class="tablewrap"><table><thead><tr><th>Promoción</th><th>Incluye</th><th class="r">Por separado</th><th class="r">Precio promo</th><th class="r">Disponibles</th><th></th></tr></thead><tbody>
-  ${D.promos.map(c => { const { sep, cos } = sumas(c.items.map(i => ({ pid: i.producto_id, q: i.cantidad }))); return `<tr><td>${esc(c.nombre)}<div class="muted">${esc(c.codigo || 'sin código')}</div></td><td>${c.items.map(i => i.cantidad + '× ' + esc(i.nombre)).join('<br>')}</td><td class="r num">${fmt(sep)}</td><td class="r num"><b>${fmt(c.precio)}</b><div class="muted">ganancia ${fmt(c.precio - cos)} · ${pctTxt(c.precio, cos)}</div></td><td class="r num">${c.disponibles}</td><td class="r"><button class="link" data-act="ecombo" data-id="${c.id}">Editar</button></td></tr>`; }).join('')}</tbody></table></div>`
+  ${D.promos.map(c => { const { sep, cos } = sumas(c.items.map(i => ({ pid: i.producto_id, q: i.cantidad }))); return `<tr><td>${esc(c.nombre)}<div class="muted">${esc(c.codigo || 'sin código')}</div></td><td>${c.items.map(i => i.cantidad + '× ' + esc(i.nombre) + (D.productos.some(p => p.id === i.producto_id) ? '' : ' <span class="pill bad">dado de baja</span>')).join('<br>')}</td><td class="r num">${fmt(sep)}</td><td class="r num"><b>${fmt(c.precio)}</b><div class="muted">ganancia ${fmt(c.precio - cos)} · ${pctTxt(c.precio, cos)}</div></td><td class="r num">${c.disponibles}</td><td class="r"><button class="link" data-act="ecombo" data-id="${c.id}">Editar</button></td></tr>`; }).join('')}</tbody></table></div>`
     : `<div class="empty">Todavía no hay promociones.${D.productos.length ? ' Creá la primera con «+ Promoción».' : ' Primero cargá productos.'}</div>`}</section>`;
 }
 function editCombo(id) {
@@ -376,7 +378,7 @@ function drawCombo() {
   dlg(`<h2>${ce.id ? 'Editar promoción' : 'Nueva promoción'}</h2>
   <div class="row"><div style="flex:2"><label for="k_n">Nombre</label><input id="k_n" data-ce="nombre" value="${esc(ce.nombre)}" placeholder="Ej.: Combo Fernet"></div><div><label for="k_cb">Código (opcional)</label><input id="k_cb" data-ce="codigo" class="num" value="${esc(ce.codigo)}"></div></div>
   <label>Productos que incluye</label>
-  ${ce.items.map((i, x) => `<div class="row" style="flex-wrap:nowrap"><select data-ci="pid" data-i="${x}" style="flex:3;min-width:0" aria-label="Producto">${D.productos.map(p => `<option value="${p.id}" ${p.id === i.pid ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select><input class="num" data-ci="q" data-i="${x}" value="${i.q}" style="flex:0;min-width:64px;width:64px" aria-label="Cantidad">${ce.items.length > 1 ? `<button class="link" style="flex:0;min-width:0" data-act="kdel" data-i="${x}">Quitar</button>` : ''}</div>`).join('')}
+  ${ce.items.map((i, x) => `<div class="row" style="flex-wrap:nowrap"><select data-ci="pid" data-i="${x}" style="flex:1;min-width:0" aria-label="Producto">${D.productos.some(p => p.id === i.pid) ? '' : '<option value="" selected>Producto dado de baja: elegí otro</option>'}${D.productos.map(p => `<option value="${p.id}" ${p.id === i.pid ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select><input class="num" data-ci="q" data-i="${x}" value="${i.q}" style="flex:none;min-width:0;width:64px" aria-label="Cantidad">${ce.items.length > 1 ? `<button class="link" style="flex:none;min-width:0" data-act="kdel" data-i="${x}">Quitar</button>` : ''}</div>`).join('')}
   <button class="link" style="align-self:start" data-act="kadd">+ Agregar producto</button>
   <div><label for="k_p">Precio de la promoción</label><input id="k_p" data-ce="precio" class="num" inputmode="numeric" value="${esc(ce.precio)}" placeholder="${Math.round(sep)}"></div>
   <div class="msg ok">Por separado: ${fmt(sep)} · Costo: ${fmt(cos)}${pr ? ` · Ganancia: ${fmt(pr - cos)} (${pctTxt(pr, cos)} sobre costo)` : ''}</div>
