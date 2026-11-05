@@ -8,6 +8,7 @@ Sistema de mostrador, stock y caja diaria. Etapa 1: ventas con lector de código
 - `supabase/00-esquema.sql`: base de datos completa (ya cargada).
 - `listas.js`, `compras.js`: lector de listas (PDF/Excel), proveedores e ingreso de mercadería.
 - `supabase/02-proveedores-y-compras.sql`: catálogo por proveedor e ingreso de mercadería.
+- `supabase/05-historial-cuenta-corriente.sql`: el vendedor puede ver el historial de cuenta corriente.
 - `supabase/04-vender-sin-stock.sql`: opción para vender sin stock.
 - `supabase/03-compras.sql`: área Compras (varios catálogos por proveedor, comparador de precios, pedidos).
 - `supabase/01-aprobar-usuarios.sql`: ajuste de seguridad para que los usuarios nuevos necesiten aprobación del dueño. **Correrlo una vez en el SQL Editor.**

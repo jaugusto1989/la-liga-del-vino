@@ -402,13 +402,39 @@ function clientes() {
   const mediosCobro = D.medios.filter(m => !m.es_cuenta_corriente);
   return `<section class="panel stack" style="max-width:900px"><h2>Cuentas corrientes</h2>
   <div class="tablewrap"><table><thead><tr><th>Cliente</th><th class="r">Debe</th><th class="r">Límite</th><th>Registrar pago</th></tr></thead><tbody>
-  ${D.clientes.map(c => `<tr><td>${esc(c.nombre)}${c.telefono ? `<div class="muted">${esc(c.telefono)}</div>` : ''}</td><td class="r num">${+c.saldo ? `<b>${fmt(c.saldo)}</b>` : '—'}</td>
+  ${D.clientes.map(c => `<tr><td>${esc(c.nombre)}${c.telefono ? `<div class="muted">${esc(c.telefono)}</div>` : ''}<div><button class="link" style="padding:0" data-act="cchist" data-id="${c.id}">Ver historial</button></div></td><td class="r num">${+c.saldo ? `<b>${fmt(c.saldo)}</b>` : '—'}</td>
   <td class="r num">${dueno() ? `<input class="num inline" style="width:110px;text-align:right" data-lim="${c.id}" value="${+c.limite_credito}" aria-label="Límite">` : fmt(c.limite_credito)}</td>
   <td><div class="row" style="flex-wrap:nowrap"><input class="num" id="cp_${c.id}" placeholder="Monto" inputmode="numeric" style="min-width:90px"><select id="cm_${c.id}" style="min-width:110px" aria-label="Medio">${mediosCobro.map(m => `<option value="${m.id}">${esc(m.nombre)}</option>`).join('')}</select><button class="btn" style="flex:0" data-act="pagocc" data-id="${c.id}" ${+c.saldo > 0 ? '' : 'disabled'}>Cobrar</button></div></td></tr>`).join('')}
   </tbody></table>${D.clientes.length ? '' : '<div class="empty">Todavía no hay clientes.</div>'}</div>
   <div class="row"><div style="flex:2"><label for="nc">Nuevo cliente</label><input id="nc" placeholder="Nombre"></div><div><label for="nt">Teléfono</label><input id="nt"></div>
   ${dueno() ? `<div><label for="nl">Límite</label><input id="nl" class="num" value="50000"></div>` : ''}<button class="btn" style="flex:0" data-act="addcli">Agregar</button></div>
   ${dueno() ? '' : '<p class="muted" style="margin:0">Los clientes nuevos quedan con límite $0 hasta que el dueño les asigne uno.</p>'}</section>`;
+}
+
+let lastRecibo = null, histHTML = '';
+function reciboHTML(r) {
+  return `<div class="c"><img src="logo.png" alt="${esc(D.config.nombre_local)}" class="tlogo">${fecha(r.fecha)} ${hora(r.fecha)}</div><hr>
+  <div class="c"><b>RECIBO DE PAGO</b><br>Cuenta corriente</div><hr>
+  <div>Cliente: ${esc(r.cliente)}</div><div class="l"><span>Pagó (${esc(r.medio)})</span><b>${fmt(r.monto)}</b></div>
+  <div class="l"><span>Saldo pendiente</span><b>${fmt(r.saldo)}</b></div><hr><div class="c">${esc(D.config.pie_ticket)}</div>`;
+}
+async function dlgHistorial(id) {
+  const c = D.clientes.find(x => x.id === id);
+  const movs = await q(sb.from('cuenta_corriente').select('*, ventas(numero, venta_items(descripcion, cantidad)), medios_pago(nombre)').eq('cliente_id', id).order('fecha'));
+  let saldo = 0; const filas = movs.map(m => { saldo += +m.monto; return { ...m, saldo }; }).reverse();
+  const det = m => m.tipo === 'cargo' ? `Compra${m.ventas ? ' · ticket #' + m.ventas.numero : ''}${m.ventas?.venta_items?.length ? `<div class="muted">${m.ventas.venta_items.map(i => i.cantidad + '× ' + esc(i.descripcion)).join(', ')}</div>` : ''}`
+    : m.tipo === 'pago' ? `Pago${m.medios_pago ? ' · ' + esc(m.medios_pago.nombre) : ''}` : m.tipo === 'anulacion' ? `Anulación${m.ventas ? ' del ticket #' + m.ventas.numero : ''}` : esc(m.detalle || 'Ajuste');
+  histHTML = `<div class="c"><img src="logo.png" alt="${esc(D.config.nombre_local)}" class="tlogo"><b>ESTADO DE CUENTA</b><br>${esc(c.nombre)}<br>${fecha(new Date())}</div><hr>
+  ${filas.slice().reverse().map(m => `<div class="l"><span>${fecha(m.fecha)} ${m.tipo === 'cargo' ? 'Compra' + (m.ventas ? ' #' + m.ventas.numero : '') : m.tipo === 'pago' ? 'Pago' : m.tipo === 'anulacion' ? 'Anulación' : 'Ajuste'}</span><span>${+m.monto > 0 ? '' : '-'}${fmt(Math.abs(m.monto))}</span></div>`).join('')}<hr>
+  <div class="l"><b>SALDO</b><b>${fmt(saldo)}</b></div>`;
+  const tot = t => movs.filter(m => m.tipo === t).reduce((s, m) => s + Math.abs(+m.monto), 0);
+  dlg(`<h2>Cuenta de ${esc(c.nombre)}</h2>
+  <div class="kpis" style="margin:0"><div class="kpi"><span>Debe hoy</span><b>${fmt(c.saldo)}</b></div><div class="kpi"><span>Compró en total</span><b>${fmt(tot('cargo'))}</b></div><div class="kpi"><span>Pagó en total</span><b>${fmt(tot('pago'))}</b></div></div>
+  ${filas.length ? `<div class="tablewrap" style="max-height:50vh;overflow:auto"><table><thead><tr><th>Fecha</th><th>Movimiento</th><th class="r">Compra</th><th class="r">Pago</th><th class="r">Saldo</th></tr></thead><tbody>
+  ${filas.map(m => `<tr><td class="num" style="white-space:nowrap">${fecha(m.fecha)}<div class="muted">${hora(m.fecha)}</div></td><td>${det(m)}</td>
+    <td class="r num">${+m.monto > 0 ? fmt(m.monto) : ''}</td><td class="r num" style="color:var(--ok)">${+m.monto < 0 ? fmt(-m.monto) : ''}</td><td class="r num"><b>${fmt(m.saldo)}</b></td></tr>`).join('')}
+  </tbody></table></div>` : '<div class="empty">Este cliente todavía no tiene movimientos.</div>'}
+  <div class="row"><button class="btn" data-act="cerrardlg">Cerrar</button>${filas.length ? '<button class="btn primary" data-act="cchprint">Imprimir estado de cuenta</button>' : ''}</div>`);
 }
 
 /* ---------------- PERFILES ---------------- */
@@ -492,7 +518,14 @@ document.addEventListener('click', e => {
       case 'kguardar': return guardarCombo();
       case 'kborrar': await q(sb.from('promociones').update({ activa: false }).eq('id', ce.id)); $('#dlg').close(); await cargar(); msg = ['ok', 'Promoción dada de baja.']; break;
       case 'pagocc': { const c = D.clientes.find(c => c.id === id), m = Math.min(money($('#cp_' + id).value), +c.saldo); if (!m) return $('#cp_' + id).focus();
-        await q(sb.rpc('cobrar_cuenta_corriente', { p_cliente: id, p_monto: m, p_medio: $('#cm_' + id).value })); await cargar(); msg = ['ok', `Cobro de ${fmt(m)} registrado.`]; break; }
+        const med = $('#cm_' + id).value;
+        await q(sb.rpc('cobrar_cuenta_corriente', { p_cliente: id, p_monto: m, p_medio: med })); await cargar(); msg = ['ok', `Cobro de ${fmt(m)} registrado.`];
+        const sal = +(D.clientes.find(x => x.id === id)?.saldo ?? (c.saldo - m));
+        lastRecibo = { cliente: c.nombre, monto: m, medio: medio(med).nombre, saldo: sal, fecha: new Date().toISOString() };
+        render(); return dlg(`<h2>Pago registrado</h2><div class="ticket">${reciboHTML(lastRecibo)}</div><div class="row"><button class="btn" data-act="cerrardlg">Listo</button><button class="btn primary" data-act="ccprint">Imprimir recibo</button></div>`); }
+      case 'ccprint': $('#print').innerHTML = reciboHTML(lastRecibo); window.print(); return;
+      case 'cchist': return dlgHistorial(id);
+      case 'cchprint': $('#print').innerHTML = histHTML; window.print(); return;
       case 'addcli': { const nm = $('#nc').value.trim(); if (!nm) return $('#nc').focus();
         await q(sb.from('clientes').insert({ nombre: nm, telefono: $('#nt').value.trim() || null, limite_credito: dueno() ? money($('#nl').value) : 0 }));
         D.clientes = await q(sb.from('clientes_saldo').select('*').order('nombre')); msg = ['ok', 'Cliente agregado.']; break; }
